@@ -4,4 +4,3 @@ priv
 *.o
 *.beam
 *.plt
-rel/mynode
