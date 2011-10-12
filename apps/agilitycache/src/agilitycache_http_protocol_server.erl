@@ -153,13 +153,15 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, undefined, Abs
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
 										   connection=ConnAtom, method=Method, version=Version,
 										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port}});
+										   host=Host, raw_host=RawHost3, port=Port,
+										   headers=[{'Host', RawHost3}]}});
 
 	{Host, RawHost3, Port} ->
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
 										   connection=ConnAtom, method=Method, version=Version,
 										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port}});
+										   host=Host, raw_host=RawHost3, port=Port,
+										   headers=[{'Host', << RawHost3, ":", Port>>}]}});
 	_ ->
 	    {stop, 400, State}
     end;
@@ -174,13 +176,15 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, Port, AbsPath}
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
 										   connection=ConnAtom, method=Method, version=Version,
 										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port}});
+										   host=Host, raw_host=RawHost3, port=Port,
+										   headers=[{'Host', RawHost3}]}});
 
 	{Host, RawHost3, Port2} ->
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
 										   connection=ConnAtom, method=Method, version=Version,
 										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port2}});
+										   host=Host, raw_host=RawHost3, port=Port2,
+										   headers=[{'Host', << RawHost3, ":", Port>>}]}});
 	_ ->
 	    {stop, 400, State}
     end;
