@@ -19,7 +19,8 @@
 
 -export([start_request/1,
 	 get_body/1,
-	 send_data/2]).
+	 send_data/2,
+	 stop/1]).
 
 -export([start_connect/3,
 	 idle_wait/3,
@@ -50,6 +51,8 @@ get_body(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, get_body, infinity).
 send_data(OwnPid, Data) ->
 	gen_fsm:send_event(OwnPid, {send_data, Data}).
+stop(OwnPid) ->
+    gen_fsm:send_all_state_event(OwnPid, stop).	
 	
 %%%===================================================================
 %%% API
@@ -247,6 +250,10 @@ do_send_data(State=#state{
 	    {stop, Reason, State}
     end.
 
+%%-spec do_terminate(#state{}) -> ok.
+do_terminate(#state{socket=Socket, transport=Transport}) ->
+	Transport:close(Socket),
+	ok.    
 
 %%--------------------------------------------------------------------
 %% @private
@@ -279,6 +286,9 @@ do_send_data(State=#state{
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_event(stop, _StateName, StateData) ->
+	do_terminate(StateData),
+	{stop, normal, StateData};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 

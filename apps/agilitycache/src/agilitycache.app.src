@@ -9,16 +9,20 @@
                   cowboy
                  ]},
   {modules, [
-    agilitycache_app,
-    agilitycache_dispatcher,
-    agilitycache_http_handler,
-    %%agilitycache_http_protocol_client,
-    agilitycache_http_protocol,
-    agilitycache_http_req,
-    agilitycache_proxy_handler,
-    agilitycache_srv,
-    agilitycache_sup
-    ]
+	     agilitycache_app,
+	     agilitycache_dispatcher,
+	     agilitycache_http_handler,
+	     agilitycache_http_protocol_client,
+	     agilitycache_http_protocol,
+	     agilitycache_http_protocol_parser,
+	     agilitycache_http_protocol_server,
+	     agilitycache_http_rep,
+	     agilitycache_http_req,
+	     agilitycache_proxy_handler,
+	     agilitycache_srv,
+	     agilitycache_sup,
+	     agilitycache_tcp_transport
+	    ]
   },
   {mod, { agilitycache_app, []}},
   {env, []}

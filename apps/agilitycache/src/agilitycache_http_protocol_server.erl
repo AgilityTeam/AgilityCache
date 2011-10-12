@@ -6,7 +6,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -15,6 +15,17 @@
          handle_info/3,
          terminate/3,
          code_change/4]).
+         
+-export([receive_request/1,
+		 get_body/1,
+		 send_data/2,
+		 stop/1]).
+		 
+-export([start_receive_request/3,
+		 idle_wait/3,
+		 do_get_body/1,
+		 idle_wait/2,
+		 do_send_data/1]).		 
 
 -define(SERVER, ?MODULE).
 
@@ -29,7 +40,16 @@
 	  buffer = <<>> :: binary(),
 	  from :: pid()
 	 }).
-
+	 
+receive_request(OwnPid) ->
+    gen_fsm:sync_send_event(OwnPid, receive_request, infinity).
+get_body(OwnPid) ->
+    gen_fsm:sync_send_event(OwnPid, get_body, infinity).
+send_data(OwnPid, Data) ->
+	gen_fsm:send_event(OwnPid, {send_data, Data}).	 
+stop(OwnPid) ->
+    gen_fsm:send_all_state_event(OwnPid, stop).	
+	
 
 %%%===================================================================
 %%% API
@@ -72,7 +92,7 @@ init(Opts) ->
     Timeout = proplists:get_value(timeout, Opts, 5000),
     Transport = proplists:get_value(transport, Opts),
     Socket = proplists:get_value(socket, Opts),
-    {ok, start_receive_request, #state{http_req=HttpReq, timeout=Timeout, 
+    {ok, start_receive_request, #state{timeout=Timeout, 
 				       max_empty_lines=MaxEmptyLines, transport=Transport, socket=Socket }}.
 
 start_receive_request(receive_request, From, State) ->
@@ -87,8 +107,8 @@ wait_request(State=#state{socket=Socket, transport=Transport,
 	{error, timeout} -> 
 	    {stop, 408, State};
 	{error, closed} -> 
-	    {stop, closed, State};
-	end.
+	    {stop, closed, State}
+    end.
 
 %%-spec start_parse_request(#state{}) -> ok.
 %% @todo Use decode_packet options to limit length?
@@ -99,8 +119,8 @@ start_parse_request(State=#state{buffer=Buffer}) ->
 	{more, _Length} -> 
 	    wait_request(State);
 	{error, _Reason} -> 
-	    {stop, 400, State};
-	end.
+	    {stop, 400, State}
+    end.
 
 %%-spec parse_request({http_request, http_method(), http_uri(), http_version()}, #state{}) -> ok.
 %% @todo We probably want to handle some things differently between versions.
@@ -166,11 +186,11 @@ parse_request({http_request, Method, '*', Version},
 									   path='*', raw_path= <<"*">>, raw_qs= <<>>}});
 parse_request({http_request, _Method, _URI, _Version}, State) ->
     {stop, 501, State};
-request({http_error, <<"\r\n">>},
-	State=#state{req_empty_lines=N, max_empty_lines=N}) ->
+parse_request({http_error, <<"\r\n">>},
+	      State=#state{req_empty_lines=N, max_empty_lines=N}) ->
     {stop, 400, State};
 parse_request({http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}) ->
-    parse_request(State#state{req_empty_lines=N + 1});
+    start_parse_request(State#state{req_empty_lines=N + 1});
 parse_request({http_error, _Any}, State) ->
     {stop, 400, State}.
 
@@ -180,10 +200,10 @@ start_parse_header(State=#state{buffer=Buffer}) ->
 	{ok, Header, Rest} -> 
 	    parse_header(Header, State#state{buffer=Rest});
 	{more, _Length} -> 
-	    wait_header(Req, State);
+	    wait_header(State);
 	{error, _Reason} -> 
-	    {stop, 400, State};
-	end.
+	    {stop, 400, State}
+    end.
 
 %%-spec wait_header(#http_req{}, #state{}) -> ok.
 wait_header(State=#state{socket=Socket, transport=Transport, timeout=T, buffer=Buffer}) ->
@@ -193,25 +213,25 @@ wait_header(State=#state{socket=Socket, transport=Transport, timeout=T, buffer=B
 	{error, timeout} -> 
 	    {stop, 408, State};
 	{error, closed} -> 
-	    {stop, 500, State};
-	end.
+	    {stop, 500, State}
+    end.
 
 %% -spec header({http_header, integer(), http_header(), any(), binary()} | http_eoh, #http_req{}, #state{}) -> ok.
 parse_header({http_header, _I, 'Host', _R, RawHost}, 
-	     State = #state{http_req=Req#http_req{transport=Transport, host=undefined}}) ->
+	     State = #state{http_req= Req = #http_req{transport=Transport, host=undefined}}) ->
     RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
     case catch agilitycache_dispatcher:split_host(RawHost2) of
 	{Host, RawHost3, undefined} ->
 	    Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
-	    parse_header(State#state{http_req=Req#http_req{
-					   host=Host, raw_host=RawHost3, port=Port,
-					   headers=[{'Host', RawHost3}|Req#http_req.headers]}});
+	    start_parse_header(State#state{http_req=Req#http_req{
+						      host=Host, raw_host=RawHost3, port=Port,
+						      headers=[{'Host', RawHost3}|Req#http_req.headers]}});
 	{Host, RawHost3, Port} ->
-	    parse_header(State#state{http_req=Req#http_req{
-					   host=Host, raw_host=RawHost3, port=Port,
-					   headers=[{'Host', RawHost3}|Req#http_req.headers]}} );
+	    start_parse_header(State#state{http_req=Req#http_req{
+						      host=Host, raw_host=RawHost3, port=Port,
+						      headers=[{'Host', RawHost3}|Req#http_req.headers]}} );
 	{'EXIT', _Reason} ->
-	    error_terminate(400, State)
+	    {stop, 400, State}
     end;
 %% Ignore Host headers if we already have it.
 parse_header({http_header, _I, 'Host', _R, _V}, State) ->
@@ -219,25 +239,67 @@ parse_header({http_header, _I, 'Host', _R, _V}, State) ->
 parse_header({http_header, _I, 'Connection', _R, Connection}, State = #state{http_req=Req}) ->
     ConnAtom = agilitycache_http_protocol_parser:connection_to_atom(Connection),
     start_parse_header(State#state{connection=ConnAtom, http_req=Req#http_req{connection=ConnAtom,
-				    headers=[{'Connection', Connection}|Req#http_req.headers]}});
+									      headers=[{'Connection', Connection}|Req#http_req.headers]}});
 parse_header({http_header, _I, Field, _R, Value}, State = #state{http_req=Req}) ->
     Field2 = agilitycache_http_protocol_parser:format_header(Field),
     start_parse_header(State#state{http_req=Req#http_req{headers=[{Field2, Value}|Req#http_req.headers]}});
 %% The Host header is required in HTTP/1.1.
-parse_header(http_eoh, #http_req{version={1, 1}, host=undefined}, State) ->
+parse_header(http_eoh, State=#state{http_req=Req}) when Req#http_req.version=:= {1, 1} andalso Req#http_req.host=:=undefined ->
     {stop, 400, State};
 %% It is however optional in HTTP/1.0.
-parse_header(http_eoh, Req=#http_req{version={1, 0}, transport=Transport,
-				     host=undefined}, State=#state{buffer=Buffer}) ->
+%% @todo Devia ser um erro, host undefined o.O
+parse_header(http_eoh, State=#state{buffer=Buffer, http_req=Req=#http_req{version={1, 0}, transport=Transport, host=undefined}}) ->
     Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
     %% Ok, terminar aqui, e esperar envio!
-    dispatch(fun handler_init/2, Req#http_req{host=[], raw_host= <<>>,
-					      port=Port, buffer=Buffer}, State#state{buffer= <<>>});
-parse_header(http_eoh, Req, State=#state{buffer=Buffer}) ->
-	%% Ok, terminar aqui, e esperar envio!
-    dispatch(fun handler_init/2, Req#http_req{buffer=Buffer}, State#state{buffer= <<>>});
-parse_header({http_error, _Bin}, _Req, State) ->
+    {reply, {ok, Req#http_req{host=[], raw_host= <<>>, port=Port, buffer=Buffer}},
+    idle_wait, 
+     State#state{buffer= <<>>, http_req=Req#http_req{host=[], raw_host= <<>>, port=Port, buffer=Buffer}}};
+parse_header(http_eoh, State=#state{buffer=Buffer, http_req=Req}) ->
+    %% Ok, terminar aqui, e esperar envio!
+    {reply, {ok, Req#http_req{buffer=Buffer}, idle_wait, State#state{buffer= <<>>}}};
+parse_header({http_error, _Bin}, State) ->
     {stop, 500, State}.
+    
+idle_wait(get_body, From, State) ->
+    do_get_body(State#state{from=From});
+%% different call from someone else. Not supported! Let it die.
+idle_wait(Event, _From, State) ->
+    unexpected(Event, idle_wait),
+    {next_state, idle_wait, State}.
+
+idle_wait({send_data, Data}, State) ->
+    do_send_data(State#state{buffer=Data});
+idle_wait(Event, State) ->
+    unexpected(Event, idle_wait),
+    {next_state, idle_wait, State}.
+
+%% Empty buffer
+do_get_body(State=#state{
+			       socket=Socket, transport=Transport, timeout=T, http_req=Req}) when Req#http_req.buffer =:= <<>> ->
+    case Transport:recv(Socket, 0, T) of
+	{ok, Data} ->
+	    {reply, {ok, Data}, idle_wait, State};
+	{error, Reason} ->
+	    {stop, Reason, State}
+    end;
+%% Non empty buffer
+do_get_body(State=#state{http_req=Req}) when Req#http_req.buffer =/= <<>> ->
+    {reply, {ok, Req#http_req.buffer}, idle_wait, State#state{http_req=Req#http_req{buffer = <<>>}}}.
+    
+do_send_data(State=#state{
+			       socket=Socket, transport=Transport, buffer=Data}) ->
+    case Transport:send(Socket, Data) of
+	ok -> 
+	    {next_state, idle_wait, State#state{buffer= <<>>}};
+	{error, Reason} -> 
+	    {stop, Reason, State}
+    end.
+    
+%%-spec do_terminate(#state{}) -> ok.
+do_terminate(#state{socket=Socket, transport=Transport}) ->
+	Transport:close(Socket),
+	ok.    
+	
 
 %%--------------------------------------------------------------------
 %% @private
@@ -252,6 +314,9 @@ parse_header({http_error, _Bin}, _Req, State) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_event(stop, _StateName, StateData) ->
+	do_terminate(StateData),
+	{stop, normal, StateData};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -321,3 +386,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+%% Unexpected allows to log unexpected messages
+-spec unexpected(any(), atom()) -> ok.
+unexpected(Msg, State) ->
+    error_logger:info_msg("~p received unknown event ~p while in state ~p~n",
+			  [self(), Msg, State]).
