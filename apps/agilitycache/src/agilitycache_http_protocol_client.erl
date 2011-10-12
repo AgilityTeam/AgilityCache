@@ -18,6 +18,7 @@
          code_change/4]).
 
 -export([start_request/1,
+     start_receive_reply/1,
 	 get_body/1,
 	 send_data/2,
 	 stop/1,
@@ -48,6 +49,8 @@
 
 start_request(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, start_request, infinity).
+start_receive_reply(OwnPid) ->
+	gen_fsm:sync_send_event(OwnPid, start_receive_reply, infinity).
 get_body(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, get_body, infinity).
 send_data(OwnPid, Data) ->
@@ -98,7 +101,6 @@ start(Opts) ->
 -spec init(any()) -> {ok, atom(), #state{}}.
 init(Opts) ->
     %%Dispatch = proplists:get_value(dispatch, Opts, []),
-    error_logger:info_msg("Opts: ~p~n", [Opts]),
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
     Timeout = proplists:get_value(timeout, Opts, 5000),
     HttpReq = proplists:get_value(http_req, Opts),
@@ -124,18 +126,15 @@ init(Opts) ->
 start_connect(start_request, From, State = #state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
-    error_logger:info_msg("Tentando conectar"),
     {ok, Socket} = Transport:connect(binary_to_list(RawHost), Port, [], Timeout),
-    error_logger:info_msg("Conectado"),
     start_send(State#state{http_req = HttpReq1, socket = Socket, from = From}).
     
 
 start_send(State = #state{socket=Socket, transport=Transport, http_req=HttpReq}) ->
-	error_logger:info_msg("Oia eu aqui!"),
     Packet = agilitycache_http_req:request_head(HttpReq),
     case Transport:send(Socket, Packet) of
 	ok -> 
-	    start_parse_reply(State);
+	    {reply, ok, idle_wait, State};
 	{error, Reason} -> 
 	    {stop, Reason, State}
     end.
@@ -221,6 +220,9 @@ parse_header({http_eoh, State=#state{http_rep=Rep}}) ->
     {reply, {ok, Rep}, idle_wait, State};
 parse_header({{http_error, _Bin}, State}) ->
     {stop, 500, State}.
+    
+idle_wait(start_receive_reply, From, State) ->
+	start_parse_reply(State#state{from=From});
 
 idle_wait(get_body, From, State) ->
     do_get_body(State#state{from=From});

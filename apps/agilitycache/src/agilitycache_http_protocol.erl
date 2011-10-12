@@ -73,22 +73,59 @@ read_request(State = #state{socket=Socket, transport=Transport,
     {ok, Req} = agilitycache_http_protocol_server:receive_request(HttpServerPid),
     receive_reply(State#state{http_req=Req, http_server=HttpServerPid}).
 
-receive_reply(State = #state{transport=Transport,
-			     max_empty_lines=MaxEmptyLines, timeout=Timeout, http_req=Req}) ->
-    {ok, HttpClientPid} = 
-	agilitycache_http_protocol_client:start([
+receive_reply(State = #state{transport=Transport, max_empty_lines=MaxEmptyLines, timeout=Timeout, http_req=Req}) ->
+    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
+    {ok, HttpClientPid} = agilitycache_http_protocol_client:start([
 						      {max_empty_lines, MaxEmptyLines}, 
 						      {timeout, Timeout},
 						      {transport, Transport},
 						      {http_req, Req}]),
-    {ok, Rep} = agilitycache_http_protocol_client:start_request(HttpClientPid),
-    start_send_reply(State#state{http_rep=Rep, http_client = HttpClientPid}).
+    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
+    {Method, Req2} = agilitycache_http_req:method(Req),
+    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
+    agilitycache_http_protocol_client:start_request(HttpClientPid),
+    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
+    case agilitycache_http_protocol_parser:method_to_binary(Method) of
+		<<"POST">> ->
+			start_send_post(State#state{http_client = HttpClientPid, http_req=Req2});
+		_ ->
+			{ok, Rep} = agilitycache_http_protocol_client:start_receive_reply(HttpClientPid),
+			start_send_reply(State#state{http_rep=Rep, http_client = HttpClientPid, http_req=Req2})
+	end,
+	error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]).
+	
+start_send_post(State = #state{http_req=Req}) ->
+	{Length, Req2} = agilitycache_http_req:content_length(Req),
+	case Length of
+		undefined ->
+			start_stop(State#state{http_req=Req2});
+		_ when is_binary(Length) ->
+			send_post(list_to_integer(binary_to_list(Length)), State#state{http_req=Req2});
+		_ when is_integer(Length) ->
+			send_post(Length, State#state{http_req=Req2})
+	end.
+	
+send_post(Length, State = #state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
+		{ok, Data} = agilitycache_http_protocol_server:get_body(HttpServerPid),
+		DataSize = iolist_size(Data),
+		Restant = Length - DataSize,
+		case Restant of
+			0 ->
+				agilitycache_http_protocol_client:send_data(HttpClientPid, Data),
+				{ok, Rep} = agilitycache_http_protocol_client:start_receive_reply(HttpClientPid),
+				start_send_reply(State#state{http_rep=Rep});
+			_ when Restant > 0 ->
+				agilitycache_http_protocol_client:send_data(HttpClientPid, Data),
+				send_post(Restant, State);
+			_ ->
+				start_stop(State)
+		end.
+	
 
 start_send_reply(State = #state{http_req=Req, http_rep=Rep, http_server=HttpServerPid}) ->
   {Status, Rep2} = agilitycache_http_rep:status(Rep),
   {Headers, Rep3} = agilitycache_http_rep:headers(Rep2),
   {Length, Rep4} = agilitycache_http_rep:content_length(Rep3),
-  error_logger:info_msg("Length: ~p", [Length]),
   {ok, Req2} = agilitycache_http_req:start_reply(HttpServerPid, Status, Headers, Length, Req),
   send_reply(State#state{http_rep=Rep4, http_req=Req2}).
   
@@ -103,6 +140,6 @@ send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerP
 			send_reply(State)
 	end.
 
-start_stop(State = #state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
+start_stop(#state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
 	agilitycache_http_protocol_client:stop(HttpClientPid),
 	agilitycache_http_protocol_server:stop(HttpServerPid).
