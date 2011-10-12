@@ -7,21 +7,19 @@
 -module(agilitycache_http_req).
 
 -export([
-	method/1, version/1, peer/1,
+	method/1, version/1, peer/2,
 	host/1, raw_host/1, port/1,
 	path/1, raw_path/1,
 	qs_val/2, qs_val/3, qs_vals/1, raw_qs/1,
 	header/2, header/3, headers/1,
-	cookie/2, cookie/3, cookies/1
+	cookie/2, cookie/3, cookies/1,
+	content_length/1
 ]). %% Request API.
 
 -export([
-	body/1, body/2, body_qs/1
-]). %% Request Body API.
-
--export([
-	reply/4, chunked_reply/3, chunk/2,
-	start_reply/4, send_reply/2
+	reply/5, 
+	start_chunked_reply/4, send_chunk/3, stop_chunked_reply/2,
+	start_reply/5, send_reply/3
 ]). %% Response API.
 
 -export([
@@ -45,11 +43,12 @@ version(Req) ->
 	{Req#http_req.version, Req}.
 
 %% @doc Return the peer address and port number of the remote host.
--spec peer(#http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
-peer(Req=#http_req{socket=Socket, transport=Transport, peer=undefined}) ->
+-spec peer(pid(), #http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+peer(HttpServerPid, Req=#http_req{peer=undefined}) ->
+    {Socket, Transport} = agilitycache_http_protocol_server:get_transport_socket(HttpServerPid),
 	{ok, Peer} = Transport:peername(Socket),
 	{Peer, Req#http_req{peer=Peer}};
-peer(Req) ->
+peer(_HttpServerPid, Req) ->
 	{Req#http_req.peer, Req}.
 
 %% @doc Return the tokens for the hostname requested.
@@ -167,56 +166,19 @@ cookies(Req=#http_req{cookies=undefined}) ->
 cookies(Req=#http_req{cookies=Cookies}) ->
 	{Cookies, Req}.
 
-%% Request Body API.
-
-%% @doc Return the full body sent with the request, or <em>{error, badarg}</em>
-%% if no <em>Content-Length</em> is available.
-%% @todo We probably want to allow a max length.
--spec body(#http_req{}) -> {ok, binary(), #http_req{}} | {error, atom()}.
-body(Req) ->
-	{Length, Req2} = agilitycache_http_req:header('Content-Length', Req),
-	case Length of
-		undefined -> {error, badarg};
-		_Any ->
-			Length2 = list_to_integer(binary_to_list(Length)),
-			body(Length2, Req2)
-	end.
-
-%% @doc Return <em>Length</em> bytes of the request body.
-%%
-%% You probably shouldn't be calling this function directly, as it expects the
-%% <em>Length</em> argument to be the full size of the body, and will consider
-%% the body to be fully read from the socket.
-%% @todo We probably want to configure the timeout.
--spec body(non_neg_integer(), #http_req{})
-	-> {ok, binary(), #http_req{}} | {error, atom()}.
-body(Length, Req=#http_req{body_state=waiting, buffer=Buffer})
-		when Length =:= byte_size(Buffer) ->
-	{ok, Buffer, Req#http_req{body_state=done, buffer= <<>>}};
-body(Length, Req=#http_req{socket=Socket, transport=Transport,
-		body_state=waiting, buffer=Buffer})
-		when is_integer(Length) andalso Length > byte_size(Buffer) ->
-	case Transport:recv(Socket, Length - byte_size(Buffer), 5000) of
-		{ok, Body} -> {ok, << Buffer/binary, Body/binary >>,
-			Req#http_req{body_state=done, buffer= <<>>}};
-		{error, Reason} -> {error, Reason}
-	end.
-
-%% @doc Return the full body sent with the reqest, parsed as an
-%% application/x-www-form-urlencoded string. Essentially a POST query string.
--spec body_qs(#http_req{}) -> {list({binary(), binary() | true}), #http_req{}}.
-body_qs(Req) ->
-	{ok, Body, Req2} = body(Req),
-	{parse_qs(Body), Req2}.
+-spec content_length(#http_req{}) -> {binary() | integer(), #http_req{}}.
+content_length(Req=#http_req{content_length=undefined}) ->
+	{Length, Req} = header('Content-Length', Req),
+	{Length, Req#http_req{content_length=Length}};
+content_length(Req) ->
+	{Req#http_req.content_length, Req}.
 
 %% Response API.
 
 %% @doc Send a reply to the client.
--spec reply(http_status(), http_headers(), iodata(), #http_req{})
+-spec reply(pid(), http_status(), http_headers(), iodata(), #http_req{})
 	-> {ok, #http_req{}}.
-reply(Code, Headers, Body, Req=#http_req{socket=Socket,
-		transport=Transport, connection=Connection,
-		method=Method, resp_state=waiting}) ->
+reply(HttpServerPid, Code, Headers, Body, Req=#http_req{connection=Connection, method=Method, resp_state=waiting}) ->
 	Head = agilitycache_http_rep:response_head(Code, Headers, [
 		{<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
 		{<<"Content-Length">>,
@@ -225,89 +187,84 @@ reply(Code, Headers, Body, Req=#http_req{socket=Socket,
 		{<<"Server">>, <<"AgilityCache">>}
 	]),
 	case Method of
-		'HEAD' -> Transport:send(Socket, Head);
-		_ -> Transport:send(Socket, [Head, Body])
+		'HEAD' -> agilitycache_http_protocol_server:send_data(HttpServerPid, Head);
+		_ -> agilitycache_http_protocol_server:send_data(HttpServerPid, [Head, Body])
 	end,
 	{ok, Req#http_req{resp_state=done}}.
 	
 %% @doc Send a reply to the client.
--spec start_reply(http_status(), http_headers(), integer()|binary(), #http_req{})
+-spec start_reply(pid(), http_status(), http_headers(), integer()|binary(), #http_req{})
 	-> {ok, #http_req{}}.
-start_reply(Code, Headers, Length, Req=#http_req{socket=Socket,
-		transport=Transport, connection=Connection,
-		method=Method, resp_state=waiting}) when is_binary(Length) ->
+start_reply(HttpServerPid, Code, Headers, Length, Req) when is_integer(Length) ->
+		start_reply(HttpServerPid, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
+start_reply(HttpServerPid, Code, Headers, undefined, Req=#http_req{connection=Connection, method=Method}) ->
+	Head = agilitycache_http_rep:response_head(Code, Headers, [
+		{<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
+		{<<"Date">>, cowboy_clock:rfc1123()},
+		{<<"Server">>, <<"AgilityCache">>}
+	]),
+	agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
+	case Method of
+		'HEAD' -> 
+			{ok, Req#http_req{resp_state=done}};
+		_ -> 
+			{ok, Req#http_req{resp_state=waiting}}
+	end;
+start_reply(HttpServerPid, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) when is_binary(Length) ->
 	Head = agilitycache_http_rep:response_head(Code, Headers, [
 		{<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
 		{<<"Content-Length">>,Length},
 		{<<"Date">>, cowboy_clock:rfc1123()},
 		{<<"Server">>, <<"AgilityCache">>}
 	]),
+	agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
 	case Method of
 		'HEAD' -> 
-			Transport:send(Socket, Head),
 			{ok, Req#http_req{resp_state=done}};
 		_ -> 
-			Transport:send(Socket, Head),
-			{ok, Req#http_req{resp_state=waiting}}
-	end;
-start_reply(Code, Headers, Length, Req=#http_req{socket=Socket,
-		transport=Transport, connection=Connection,
-		method=Method, resp_state=waiting}) when is_integer(Length) ->
-	Head = agilitycache_http_rep:response_head(Code, Headers, [
-		{<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
-		{<<"Content-Length">>,
-			list_to_binary(integer_to_list(Length))},
-		{<<"Date">>, cowboy_clock:rfc1123()},
-		{<<"Server">>, <<"AgilityCache">>}
-	]),
-	case Method of
-		'HEAD' -> 
-			Transport:send(Socket, Head),
-			{ok, Req#http_req{resp_state=done}};
-		_ -> 
-			Transport:send(Socket, Head),
 			{ok, Req#http_req{resp_state=waiting}}
 	end.
 	
--spec send_reply(iodata(), #http_req{}) -> ok.
-send_reply(_Data, #http_req{socket=_Socket, transport=_Transport, method='HEAD'}) ->
+-spec send_reply(pid(), iodata(), #http_req{}) -> ok.
+send_reply(_HttpServerPid, _Data, #http_req{method='HEAD'}) ->
 	ok;
-send_reply(Data, #http_req{socket=Socket, transport=Transport, resp_state=waiting}) ->
-	Transport:send(Socket, Data).
+send_reply(HttpServerPid, Data, #http_req{resp_state=waiting}) ->
+	agilitycache_http_protocol_server:send_data(HttpServerPid, Data).
 	
 
 %% @doc Initiate the sending of a chunked reply to the client.
 %% @see agilitycache_http_req:chunk/2
--spec chunked_reply(http_status(), http_headers(), #http_req{})
+-spec start_chunked_reply(pid(), http_status(), http_headers(), #http_req{})
 	-> {ok, #http_req{}}.
-chunked_reply(Code, Headers, Req=#http_req{socket=Socket, transport=Transport,
-		method='HEAD', resp_state=waiting}) ->
+start_chunked_reply(HttpServerPid, Code, Headers, Req=#http_req{method='HEAD', resp_state=waiting}) ->
 	Head = agilitycache_http_rep:response_head(Code, Headers, [
 		{<<"Date">>, cowboy_clock:rfc1123()},
 		{<<"Server">>, <<"AgilityCache">>}
 	]),
-	Transport:send(Socket, Head),
+	agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
 	{ok, Req#http_req{resp_state=done}};
-chunked_reply(Code, Headers, Req=#http_req{socket=Socket, transport=Transport,
-		resp_state=waiting}) ->
+start_chunked_reply(HttpServerPid, Code, Headers, Req=#http_req{resp_state=waiting}) ->
 	Head = agilitycache_http_rep:response_head(Code, Headers, [
 		{<<"Connection">>, <<"close">>},
 		{<<"Transfer-Encoding">>, <<"chunked">>},
 		{<<"Date">>, cowboy_clock:rfc1123()},
 		{<<"Server">>, <<"AgilityCache">>}
 	]),
-	Transport:send(Socket, Head),
+	agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
 	{ok, Req#http_req{resp_state=chunks}}.
 
 %% @doc Send a chunk of data.
 %%
 %% A chunked reply must have been initiated before calling this function.
--spec chunk(iodata(), #http_req{}) -> ok.
-chunk(_Data, #http_req{socket=_Socket, transport=_Transport, method='HEAD'}) ->
+-spec send_chunk(pid(), iodata(), #http_req{}) -> ok.
+send_chunk(_HttpServerPid, _Data, #http_req{method='HEAD'}) ->
 	ok;
-chunk(Data, #http_req{socket=Socket, transport=Transport, resp_state=chunks}) ->
-	Transport:send(Socket, [integer_to_list(iolist_size(Data), 16),
-		<<"\r\n">>, Data, <<"\r\n">>]).
+send_chunk(HttpServerPid, Data, #http_req{resp_state=chunks}) ->
+	agilitycache_http_protocol_server:send_data(HttpServerPid, 
+	[integer_to_list(iolist_size(Data), 16), <<"\r\n">>, Data, <<"\r\n">>]).
+-spec stop_chunked_reply(pid(), #http_req{}) -> ok.
+stop_chunked_reply(HttpServerPid, #http_req{resp_state=chunks}) ->
+	agilitycache_http_protocol_server:send_data(HttpServerPid, <<"0\r\n\r\n">>).
 
 %% Misc API.
 
@@ -339,16 +296,11 @@ request_head(Req) ->
   {Major, Minor} = Req#http_req.version,
   Majorb = list_to_binary(integer_to_list(Major)),
   Minorb = list_to_binary(integer_to_list(Minor)),
-  error_logger:info_msg("Oia eu: ~p:~p!", [?MODULE, ?LINE]),
   Method = agilitycache_http_protocol_parser:method_to_binary(Req#http_req.method),
-  error_logger:info_msg("Oia eu: ~p:~p!", [?MODULE, ?LINE]),
   Path= Req#http_req.raw_path,
-  error_logger:info_msg("Oia eu: ~p:~p!", [?MODULE, ?LINE]),
   RequestLine = <<Method/binary, " ", Path/binary, " HTTP/", Majorb/binary, ".", Minorb/binary, "\r\n">>,
-  error_logger:info_msg("Oia eu: ~p:~p!", [?MODULE, ?LINE]),
   Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Req#http_req.headers],
   Headers = [<< Key/binary, ": ", Value/binary, "\r\n" >> || {Key, Value} <- Headers2],
-  error_logger:info_msg("Oia eu: ~p:~p!", [?MODULE, ?LINE]),
   [RequestLine, Headers, <<"\r\n">>].
 
 %% Tests.

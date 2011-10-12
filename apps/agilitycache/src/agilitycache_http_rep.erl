@@ -8,15 +8,11 @@
 
 -export([
 	status/1, version/1, string/1,
-	peer/1,
+	peer/2,
 	header/2, header/3, headers/1,
 	cookie/2, cookie/3, cookies/1,
 	content_length/1
 ]). %% Request API.
-
--export([
-	body/1, body/2, body_qs/1
-]). %% Request Body API.
 
 -export([
 	compact/1,
@@ -44,11 +40,12 @@ version(Rep) ->
 	{Rep#http_rep.version, Rep}.
 
 %% @doc Return the peer address and port number of the remote host.
--spec peer(#http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_rep{}}.
-peer(Rep=#http_rep{socket=Socket, transport=Transport, peer=undefined}) ->
+-spec peer(pid(), #http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+peer(HttpClientPid, Rep=#http_rep{peer=undefined}) ->
+    {Socket, Transport} = agilitycache_http_protocol_client:get_transport_socket(HttpClientPid),
 	{ok, Peer} = Transport:peername(Socket),
 	{Peer, Rep#http_rep{peer=Peer}};
-peer(Rep) ->
+peer(_HttpClientPid, Rep) ->
 	{Rep#http_rep.peer, Rep}.
 
 %% @equiv header(Name, Rep, undefined)
@@ -71,9 +68,12 @@ header(Name, Rep, Default) when is_atom(Name) orelse is_binary(Name) ->
 headers(Rep) ->
 	{Rep#http_rep.headers, Rep}.
 	
--spec content_length(#http_rep{}) -> {integer(), #http_rep{}}.
+-spec content_length(#http_rep{}) -> {binary() | integer(), #http_rep{}}.
+content_length(Rep=#http_rep{content_length=undefined}) ->
+	{Length, Rep2} = header('Content-Length', Rep),
+	{Length, Rep2#http_rep{content_length=Length}};
 content_length(Rep) ->
-	header('Content-Length', Rep, -1).
+	{Rep#http_rep.content_length, Rep}.	
 
 %% @equiv cookie(Name, Rep, undefined)
 -spec cookie(binary(), #http_rep{})
@@ -111,48 +111,6 @@ cookies(Rep=#http_rep{cookies=undefined}) ->
 	end;
 cookies(Rep=#http_rep{cookies=Cookies}) ->
 	{Cookies, Rep}.
-
-%% Repuest Body API.
-
-%% @doc Return the full body sent with the request, or <em>{error, badarg}</em>
-%% if no <em>Content-Length</em> is available.
-%% @todo We probably want to allow a max length.
--spec body(#http_rep{}) -> {ok, binary(), #http_rep{}} | {error, atom()}.
-body(Rep) ->
-	{Length, Rep2} = agilitycache_http_rep:header('Content-Length', Rep),
-	case Length of
-		undefined -> {error, badarg};
-		_Any ->
-			Length2 = list_to_integer(binary_to_list(Length)),
-			body(Length2, Rep2)
-	end.
-
-%% @doc Return <em>Length</em> bytes of the request body.
-%%
-%% You probably shouldn't be calling this function directly, as it expects the
-%% <em>Length</em> argument to be the full size of the body, and will consider
-%% the body to be fully read from the socket.
-%% @todo We probably want to configure the timeout.
--spec body(non_neg_integer(), #http_rep{})
-	-> {ok, binary(), #http_rep{}} | {error, atom()}.
-body(Length, Rep=#http_rep{body_state=waiting, buffer=Buffer})
-		when Length =:= byte_size(Buffer) ->
-	{ok, Buffer, Rep#http_rep{body_state=done, buffer= <<>>}};
-body(Length, Rep=#http_rep{socket=Socket, transport=Transport,
-		body_state=waiting, buffer=Buffer})
-		when is_integer(Length) andalso Length > byte_size(Buffer) ->
-	case Transport:recv(Socket, Length - byte_size(Buffer), 5000) of
-		{ok, Body} -> {ok, << Buffer/binary, Body/binary >>,
-			Rep#http_rep{body_state=done, buffer= <<>>}};
-		{error, Reason} -> {error, Reason}
-	end.
-
-%% @doc Return the full body sent with the reqest, parsed as an
-%% application/x-www-form-urlencoded string. Essentially a POST query string.
--spec body_qs(#http_rep{}) -> {list({binary(), binary() | true}), #http_rep{}}.
-body_qs(Rep) ->
-	{ok, Body, Rep2} = body(Rep),
-	{parse_qs(Body), Rep2}.
 
 %% Misc API.
 

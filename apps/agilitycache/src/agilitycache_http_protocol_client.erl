@@ -7,7 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% API
--export([start_link/1]).
+-export([start_link/1, start/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -20,7 +20,8 @@
 -export([start_request/1,
 	 get_body/1,
 	 send_data/2,
-	 stop/1]).
+	 stop/1,
+	 get_transport_socket/1]).
 
 -export([start_connect/3,
 	 idle_wait/3,
@@ -52,7 +53,9 @@ get_body(OwnPid) ->
 send_data(OwnPid, Data) ->
 	gen_fsm:send_event(OwnPid, {send_data, Data}).
 stop(OwnPid) ->
-    gen_fsm:send_all_state_event(OwnPid, stop).	
+    gen_fsm:send_all_state_event(OwnPid, stop).	    
+get_transport_socket(OwnPid) ->
+	gen_fsm:sync_send_all_state_event(OwnPid, get_transport_socket).
 	
 %%%===================================================================
 %%% API
@@ -70,6 +73,10 @@ stop(OwnPid) ->
 -spec start_link(any()) -> {ok, pid()}.
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
+    
+-spec start(any()) -> {ok, pid()}.
+start(Opts) ->
+    gen_fsm:start(?MODULE, Opts, []).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -208,10 +215,10 @@ parse_header({{http_header, _I, Field, _R, Value}, State=#state{http_rep=Rep}}) 
     Field2 = agilitycache_http_protocol_parser:format_header(Field),
     start_parse_header(
      State#state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
-parse_header({http_eoh, State=#state{buffer=Buffer, http_rep=Rep}}) ->
+parse_header({http_eoh, State=#state{http_rep=Rep}}) ->
     %%	dispatch(fun handler_init/2, Req#http_req{buffer=Buffer}, State#state{buffer= <<>>});
     %%	OK, esperar pedido do cliente.
-    {reply, {ok, Rep}, idle_wait, State#state{buffer= <<>>, http_rep=Rep#http_rep{buffer=Buffer}}};
+    {reply, {ok, Rep}, idle_wait, State};
 parse_header({{http_error, _Bin}, State}) ->
     {stop, 500, State}.
 
@@ -230,7 +237,7 @@ idle_wait(Event, State) ->
 
 %% Empty buffer
 do_get_body(State=#state{
-			       socket=Socket, transport=Transport, timeout=T, http_rep=Rep}) when Rep#http_rep.buffer =:= <<>> ->
+			       socket=Socket, transport=Transport, timeout=T, buffer = <<>>}) ->
     case Transport:recv(Socket, 0, T) of
 	{ok, Data} ->
 	    {reply, {ok, Data}, idle_wait, State};
@@ -238,8 +245,8 @@ do_get_body(State=#state{
 	    {stop, Reason, State}
     end;
 %% Non empty buffer
-do_get_body(State=#state{http_rep=Rep}) when Rep#http_rep.buffer =/= <<>> ->
-    {reply, {ok, Rep#http_rep.buffer}, idle_wait, State#state{http_rep=Rep#http_rep{buffer = <<>>}}}.
+do_get_body(State=#state{buffer = Buffer}) ->
+    {reply, {ok, Buffer}, idle_wait, State#state{buffer = <<>>}}.
     
 do_send_data(State=#state{
 			       socket=Socket, transport=Transport, buffer=Data}) ->
@@ -308,6 +315,9 @@ handle_event(_Event, StateName, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_sync_event(get_transport_socket, _From, StateName, State = #state{socket=Socket, transport=Transport}) ->
+	Reply = {Socket, Transport},
+	{reply, Reply, StateName, State};
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.

@@ -39,11 +39,6 @@
 -type http_string() :: binary().
 
 -record(http_req, {
-	%% Transport.
-	socket     = undefined :: undefined | inet:socket(),
-	transport  = undefined :: undefined | module(),
-	connection = keepalive :: keepalive | close,
-
 	%% Request.
 	method     = 'GET'     :: http_method(),
 	version    = {1, 1}    :: http_version(),
@@ -60,21 +55,17 @@
 	bindings   = undefined :: undefined | cowboy_dispatcher:bindings(),
 	headers    = []        :: http_headers(),
 	cookies    = undefined :: undefined | http_cookies(),
+	connection = keepalive :: keepalive | close,
+	content_length     = undefined :: undefined | non_neg_integer(),
 
 	%% Request body.
 	body_state = waiting   :: waiting | done,
-	buffer     = <<>>      :: binary(),
 
 	%% Response.
 	resp_state = locked    :: locked | waiting | chunks | done
 }).
 
 -record(http_rep, {
-	%% Transport.
-	socket     = undefined :: undefined | inet:socket(),
-	transport  = undefined :: undefined | module(),
-	connection = keepalive :: keepalive | close,
-
 	%% Request.
 	status     = 200       :: http_status(),
 	version    = {1, 1}    :: http_version(),
@@ -82,10 +73,11 @@
 	peer       = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
 	headers    = []        :: http_headers(),
 	cookies    = undefined :: undefined | http_cookies(),
+	connection = keepalive :: keepalive | close,
+	content_length     = undefined :: undefined | non_neg_integer(),
 
 	%% Request body.
 	body_state = waiting   :: waiting | done,
-	buffer     = <<>>      :: binary(),
 
 	%% Response.
 	resp_state = locked    :: locked | waiting | chunks | done

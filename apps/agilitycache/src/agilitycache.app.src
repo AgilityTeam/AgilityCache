@@ -18,7 +18,6 @@
 	     agilitycache_http_protocol_server,
 	     agilitycache_http_rep,
 	     agilitycache_http_req,
-	     agilitycache_proxy_handler,
 	     agilitycache_srv,
 	     agilitycache_sup,
 	     agilitycache_tcp_transport

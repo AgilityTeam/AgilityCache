@@ -65,7 +65,7 @@ start_handle_request(State) ->
 read_request(State = #state{socket=Socket, transport=Transport,
 			    max_empty_lines=MaxEmptyLines, timeout=Timeout}) ->
     {ok, HttpServerPid} = 
-	agilitycache_http_protocol_server:start_link([
+	agilitycache_http_protocol_server:start([
 						      {max_empty_lines, MaxEmptyLines}, 
 						      {timeout, Timeout},
 						      {transport, Transport},
@@ -76,7 +76,7 @@ read_request(State = #state{socket=Socket, transport=Transport,
 receive_reply(State = #state{transport=Transport,
 			     max_empty_lines=MaxEmptyLines, timeout=Timeout, http_req=Req}) ->
     {ok, HttpClientPid} = 
-	agilitycache_http_protocol_client:start_link([
+	agilitycache_http_protocol_client:start([
 						      {max_empty_lines, MaxEmptyLines}, 
 						      {timeout, Timeout},
 						      {transport, Transport},
@@ -84,5 +84,25 @@ receive_reply(State = #state{transport=Transport,
     {ok, Rep} = agilitycache_http_protocol_client:start_request(HttpClientPid),
     start_send_reply(State#state{http_rep=Rep, http_client = HttpClientPid}).
 
-start_send_reply(State) ->
-    ok.
+start_send_reply(State = #state{http_req=Req, http_rep=Rep, http_server=HttpServerPid}) ->
+  {Status, Rep2} = agilitycache_http_rep:status(Rep),
+  {Headers, Rep3} = agilitycache_http_rep:headers(Rep2),
+  {Length, Rep4} = agilitycache_http_rep:content_length(Rep3),
+  error_logger:info_msg("Length: ~p", [Length]),
+  {ok, Req2} = agilitycache_http_req:start_reply(HttpServerPid, Status, Headers, Length, Req),
+  send_reply(State#state{http_rep=Rep4, http_req=Req2}).
+  
+send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerPid, http_req=Req}) ->
+	{ok, Data} = agilitycache_http_protocol_client:get_body(HttpClientPid),
+	case iolist_size(Data) of
+		0 ->
+			agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
+			start_stop(State);
+		_ ->
+			agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
+			send_reply(State)
+	end.
+
+start_stop(State = #state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
+	agilitycache_http_protocol_client:stop(HttpClientPid),
+	agilitycache_http_protocol_server:stop(HttpServerPid).
