@@ -297,7 +297,14 @@ request_head(Req) ->
   Majorb = list_to_binary(integer_to_list(Major)),
   Minorb = list_to_binary(integer_to_list(Minor)),
   Method = agilitycache_http_protocol_parser:method_to_binary(Req#http_req.method),
-  Path= Req#http_req.raw_path,
+  Path1= Req#http_req.raw_path,
+  Qs = Req#http_req.raw_qs,
+  Path = case Qs of
+	<<>> ->
+		Path1;
+	_ ->
+		<<Path1/binary, "?" , Qs/binary>>
+  end,
   RequestLine = <<Method/binary, " ", Path/binary, " HTTP/", Majorb/binary, ".", Minorb/binary, "\r\n">>,
   Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Req#http_req.headers],
   Headers = [<< Key/binary, ": ", Value/binary, "\r\n" >> || {Key, Value} <- Headers2],
