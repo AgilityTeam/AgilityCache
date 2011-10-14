@@ -243,8 +243,12 @@ do_get_body(State=#state{
     case Transport:recv(Socket, 0, T) of
 	{ok, Data} ->
 	    {reply, {ok, Data}, idle_wait, State};
+	{error, closed} ->
+	    {reply, closed, idle_wait, State};
+	{error, timeout} ->
+		{reply, timeout, idle_wait, State};
 	{error, Reason} ->
-	    {stop, Reason, State}
+		{stop, {error, Reason}, State}
     end;
 %% Non empty buffer
 do_get_body(State=#state{buffer = Buffer}) ->
@@ -376,4 +380,3 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 unexpected(Msg, State) ->
     error_logger:info_msg("~p received unknown event ~p while in state ~p~n",
 			  [self(), Msg, State]).
-

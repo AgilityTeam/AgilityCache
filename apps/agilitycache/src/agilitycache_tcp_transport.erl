@@ -110,7 +110,7 @@ close(Socket) ->
 -spec connect(inet:ip_address(), inet:port_number(), any(), timeout()) 
   -> {ok, inet:socket()} | {error, atom()}.
 connect(RemoteIp, RemotePort, Opts, Timeout) ->
-  ConnectOpts = [binary, {active, false}, {packet, raw}, {reuseaddr, true} | Opts],
+  ConnectOpts = [binary, {active, false}, {packet, raw} | Opts],
   gen_tcp:connect(RemoteIp, RemotePort, ConnectOpts, Timeout).
 -spec connect(inet:ip_address(), inet:port_number(), any()) -> {ok, inet:socket()} | {error, atom()}.
 connect(RemoteIp, RemotePort, Opts) ->

@@ -26,7 +26,9 @@
 	  http_req :: #http_req{},
 	  http_rep :: #http_rep{},
 	  http_client :: pid(),
+    http_client_ref :: any(),
 	  http_server :: pid(),
+    http_server_ref :: any(),
 	  listener :: pid(),
 	  socket :: inet:socket(),
 	  transport :: module(),
@@ -70,29 +72,26 @@ read_request(State = #state{socket=Socket, transport=Transport,
 						      {timeout, Timeout},
 						      {transport, Transport},
 						      {socket, Socket}]),
+    Ref = erlang:monitor(process, HttpServerPid),
     {ok, Req} = agilitycache_http_protocol_server:receive_request(HttpServerPid),
-    receive_reply(State#state{http_req=Req, http_server=HttpServerPid}).
+    receive_reply(State#state{http_req=Req, http_server=HttpServerPid, http_server_ref=Ref}).
 
 receive_reply(State = #state{transport=Transport, max_empty_lines=MaxEmptyLines, timeout=Timeout, http_req=Req}) ->
-    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
     {ok, HttpClientPid} = agilitycache_http_protocol_client:start([
 						      {max_empty_lines, MaxEmptyLines}, 
 						      {timeout, Timeout},
 						      {transport, Transport},
 						      {http_req, Req}]),
-    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
+    Ref = erlang:monitor(process, HttpClientPid),
     {Method, Req2} = agilitycache_http_req:method(Req),
-    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
     agilitycache_http_protocol_client:start_request(HttpClientPid),
-    error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]),
     case agilitycache_http_protocol_parser:method_to_binary(Method) of
 		<<"POST">> ->
-			start_send_post(State#state{http_client = HttpClientPid, http_req=Req2});
+			start_send_post(State#state{http_client = HttpClientPid, http_req=Req2, http_client_ref=Ref});
 		_ ->
 			{ok, Rep} = agilitycache_http_protocol_client:start_receive_reply(HttpClientPid),
-			start_send_reply(State#state{http_rep=Rep, http_client = HttpClientPid, http_req=Req2})
-	end,
-	error_logger:info_msg("WTF o que eu to fazendo aqui? ~p:~p", [?MODULE, ?LINE]).
+			start_send_reply(State#state{http_rep=Rep, http_client = HttpClientPid, http_req=Req2, http_client_ref=Ref})
+	end.
 	
 start_send_post(State = #state{http_req=Req}) ->
 	{Length, Req2} = agilitycache_http_req:content_length(Req),
@@ -106,6 +105,7 @@ start_send_post(State = #state{http_req=Req}) ->
 	end.
 	
 send_post(Length, State = #state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
+		%% Esperamos que isso seja sucesso, então deixa dar pau se não for sucesso
 		{ok, Data} = agilitycache_http_protocol_server:get_body(HttpServerPid),
 		DataSize = iolist_size(Data),
 		Restant = Length - DataSize,
@@ -130,16 +130,25 @@ start_send_reply(State = #state{http_req=Req, http_rep=Rep, http_server=HttpServ
   send_reply(State#state{http_rep=Rep4, http_req=Req2}).
   
 send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerPid, http_req=Req}) ->
-	{ok, Data} = agilitycache_http_protocol_client:get_body(HttpClientPid),
-	case iolist_size(Data) of
-		0 ->
-			agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-			start_stop(State);
-		_ ->
-			agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-			send_reply(State)
+    %% Bem... oo servidor pode fechar, e isso não nos afeta muito, então
+    %% gerencia aqui se fechar/timeout.
+	case agilitycache_http_protocol_client:get_body(HttpClientPid) of
+		{ok, Data} ->
+			case iolist_size(Data) of
+				0 ->
+					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
+					start_stop(State);
+				_ ->
+					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
+					send_reply(State)
+			end;
+		_ -> %% closed, timeout or other shitty thing
+			start_stop(State)
 	end.
 
-start_stop(#state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
-	agilitycache_http_protocol_client:stop(HttpClientPid),
-	agilitycache_http_protocol_server:stop(HttpServerPid).
+start_stop(#state{http_client = HttpClientPid, http_client_ref=ClientRef,
+                  http_server = HttpServerPid, http_server_ref=ServerRef}) ->
+  erlang:demonitor(ClientRef),
+  agilitycache_http_protocol_client:stop(HttpClientPid),
+  erlang:demonitor(ServerRef),
+  agilitycache_http_protocol_server:stop(HttpServerPid).

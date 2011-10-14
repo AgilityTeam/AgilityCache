@@ -15,18 +15,18 @@
          handle_info/3,
          terminate/3,
          code_change/4]).
-         
+
 -export([receive_request/1,
-		 get_body/1,
-		 send_data/2,
-		 stop/1,
-		 get_transport_socket/1]).
-		 
+	 get_body/1,
+	 send_data/2,
+	 stop/1,
+	 get_transport_socket/1]).
+
 -export([start_receive_request/3,
-		 idle_wait/3,
-		 do_get_body/1,
-		 idle_wait/2,
-		 do_send_data/1]).		 
+	 idle_wait/3,
+	 do_get_body/1,
+	 idle_wait/2,
+	 do_send_data/1]).		 
 
 -define(SERVER, ?MODULE).
 
@@ -41,18 +41,18 @@
 	  buffer = <<>> :: binary(),
 	  from :: pid()
 	 }).
-	 
+
 receive_request(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, receive_request, infinity).
 get_body(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, get_body, infinity).
 send_data(OwnPid, Data) ->
-	gen_fsm:send_event(OwnPid, {send_data, Data}).	 
+    gen_fsm:send_event(OwnPid, {send_data, Data}).	 
 stop(OwnPid) ->
     gen_fsm:send_all_state_event(OwnPid, stop).	   
 get_transport_socket(OwnPid) ->
-	gen_fsm:sync_send_all_state_event(OwnPid, get_transport_socket).
-		
+    gen_fsm:sync_send_all_state_event(OwnPid, get_transport_socket).
+
 
 %%%===================================================================
 %%% API
@@ -70,7 +70,7 @@ get_transport_socket(OwnPid) ->
 -spec start_link(any()) -> {ok, pid()}.
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
-    
+
 -spec start(any()) -> {ok, pid()}.
 start(Opts) ->
     gen_fsm:start(?MODULE, Opts, []).
@@ -94,7 +94,6 @@ start(Opts) ->
 %%--------------------------------------------------------------------
 -spec init(any()) -> {ok, atom(), #state{}}.
 init(Opts) ->
-    error_logger:info_msg("Opts: ~p~n", [Opts]),
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
     Timeout = proplists:get_value(timeout, Opts, 5000),
     Transport = proplists:get_value(transport, Opts),
@@ -140,8 +139,8 @@ parse_request({http_request, Method, {abs_path, AbsPath}, Version},
     {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-									   connection=ConnAtom, method=Method, version=Version,
-									   path=Path, raw_path=RawPath, raw_qs=Qs}});
+							  connection=ConnAtom, method=Method, version=Version,
+							  path=Path, raw_path=RawPath, raw_qs=Qs}});
 parse_request({http_request, Method, {absoluteURI, http, RawHost, undefined, AbsPath}, Version},
 	      State = #state{transport=Transport}) ->
     {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
@@ -151,17 +150,17 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, undefined, Abs
 	{Host, RawHost3, undefined} ->
 	    Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-										   connection=ConnAtom, method=Method, version=Version,
-										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port,
-										   headers=[{'Host', RawHost3}]}});
+								  connection=ConnAtom, method=Method, version=Version,
+								  path=Path, raw_path=RawPath, raw_qs=Qs,
+								  host=Host, raw_host=RawHost3, port=Port,
+								  headers=[{'Host', RawHost3}]}});
 
 	{Host, RawHost3, Port} ->
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-										   connection=ConnAtom, method=Method, version=Version,
-										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port,
-										   headers=[{'Host', << RawHost3, ":", Port>>}]}});
+								  connection=ConnAtom, method=Method, version=Version,
+								  path=Path, raw_path=RawPath, raw_qs=Qs,
+								  host=Host, raw_host=RawHost3, port=Port,
+								  headers=[{'Host', << RawHost3, ":", Port>>}]}});
 	_ ->
 	    {stop, 400, State}
     end;
@@ -174,17 +173,17 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, Port, AbsPath}
     case catch agilitycache_dispatcher:split_host(RawHost2) of
 	{Host, RawHost3, undefined} ->
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-										   connection=ConnAtom, method=Method, version=Version,
-										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port,
-										   headers=[{'Host', RawHost3}]}});
+								  connection=ConnAtom, method=Method, version=Version,
+								  path=Path, raw_path=RawPath, raw_qs=Qs,
+								  host=Host, raw_host=RawHost3, port=Port,
+								  headers=[{'Host', RawHost3}]}});
 
 	{Host, RawHost3, Port2} ->
 	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-										   connection=ConnAtom, method=Method, version=Version,
-										   path=Path, raw_path=RawPath, raw_qs=Qs,
-										   host=Host, raw_host=RawHost3, port=Port2,
-										   headers=[{'Host', << RawHost3, ":", Port>>}]}});
+								  connection=ConnAtom, method=Method, version=Version,
+								  path=Path, raw_path=RawPath, raw_qs=Qs,
+								  host=Host, raw_host=RawHost3, port=Port2,
+								  headers=[{'Host', << RawHost3, ":", Port>>}]}});
 	_ ->
 	    {stop, 400, State}
     end;
@@ -192,8 +191,8 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, Port, AbsPath}
 parse_request({http_request, Method, '*', Version}, State) ->
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-									   connection=ConnAtom, method=Method, version=Version,
-									   path='*', raw_path= <<"*">>, raw_qs= <<>>}});
+							  connection=ConnAtom, method=Method, version=Version,
+							  path='*', raw_path= <<"*">>, raw_qs= <<>>}});
 parse_request({http_request, _Method, _URI, _Version}, State) ->
     {stop, 501, State};
 parse_request({http_error, <<"\r\n">>},
@@ -262,14 +261,14 @@ parse_header(http_eoh, State=#state{transport=Transport, http_req=Req=#http_req{
     Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
     %% Ok, terminar aqui, e esperar envio!
     {reply, {ok, Req#http_req{host=[], raw_host= <<>>, port=Port}},
-    idle_wait, 
+     idle_wait, 
      State#state{http_req=Req#http_req{host=[], raw_host= <<>>, port=Port}}};
 parse_header(http_eoh, State=#state{http_req=Req}) ->
     %% Ok, terminar aqui, e esperar envio!
     {reply, {ok, Req}, idle_wait, State};
 parse_header({http_error, _Bin}, State) ->
     {stop, 500, State}.
-    
+
 idle_wait(get_body, From, State) ->
     do_get_body(State#state{from=From});
 %% different call from someone else. Not supported! Let it die.
@@ -285,31 +284,35 @@ idle_wait(Event, State) ->
 
 %% Empty buffer
 do_get_body(State=#state{
-			       socket=Socket, transport=Transport, timeout=T, buffer= <<>>})->
+	      socket=Socket, transport=Transport, timeout=T, buffer= <<>>})->
     case Transport:recv(Socket, 0, T) of
 	{ok, Data} ->
 	    {reply, {ok, Data}, idle_wait, State};
+	{error, closed} ->
+	    {reply, closed, idle_wait, State};
+	{error, timeout} ->
+	    {reply, timeout, idle_wait, State};
 	{error, Reason} ->
-	    {stop, Reason, State}
+	    {stop, {error, Reason}, State}
     end;
 %% Non empty buffer
 do_get_body(State=#state{buffer=Buffer})->
     {reply, {ok, Buffer}, idle_wait, State#state{buffer = <<>>}}.
-    
+
 do_send_data(State=#state{
-			       socket=Socket, transport=Transport, buffer=Data}) ->
+	       socket=Socket, transport=Transport, buffer=Data}) ->
     case Transport:send(Socket, Data) of
 	ok -> 
 	    {next_state, idle_wait, State#state{buffer= <<>>}};
 	{error, Reason} -> 
 	    {stop, Reason, State}
     end.
-    
+
 %%-spec do_terminate(#state{}) -> ok.
 do_terminate(#state{socket=Socket, transport=Transport}) ->
-	Transport:close(Socket),
-	ok.    
-	
+    Transport:close(Socket),
+    ok.    
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -325,8 +328,8 @@ do_terminate(#state{socket=Socket, transport=Transport}) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_event(stop, _StateName, StateData) ->
-	do_terminate(StateData),
-	{stop, normal, StateData};
+    do_terminate(StateData),
+    {stop, normal, StateData};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -347,8 +350,8 @@ handle_event(_Event, StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_sync_event(get_transport_socket, _From, StateName, State = #state{socket=Socket, transport=Transport}) ->
-	Reply = {Socket, Transport},
-	{reply, Reply, StateName, State};
+    Reply = {Socket, Transport},
+    {reply, Reply, StateName, State};
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.
