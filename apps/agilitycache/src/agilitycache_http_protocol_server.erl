@@ -101,7 +101,8 @@ init(Opts) ->
     {ok, start_receive_request, #state{timeout=Timeout, 
 				       max_empty_lines=MaxEmptyLines, transport=Transport, socket=Socket }}.
 
-start_receive_request(receive_request, From, State) ->
+start_receive_request(receive_request, From, State=#state{socket=Socket, transport=Transport}) ->
+	Transport:controlling_process(Socket, self()),
     wait_request(State#state{from=From}).
 
 %%-spec wait_request(#state{}) -> ok.
@@ -111,7 +112,7 @@ wait_request(State=#state{socket=Socket, transport=Transport,
 	{ok, Data} -> 
 	    start_parse_request(State#state{buffer= << Buffer/binary, Data/binary >>});
 	{error, timeout} -> 
-	    {stop, 408, State};
+	    {stop, {http_error, 408}, State};
 	{error, closed} -> 
 	    {stop, closed, State}
     end.
@@ -125,83 +126,78 @@ start_parse_request(State=#state{buffer=Buffer}) ->
 	{more, _Length} -> 
 	    wait_request(State);
 	{error, _Reason} -> 
-	    {stop, 400, State}
+	    {stop, {http_error, 400}, State}
     end.
 
 %%-spec parse_request({http_request, http_method(), http_uri(), http_version()}, #state{}) -> ok.
-%% @todo We probably want to handle some things differently between versions.
-parse_request({http_request, _Method, _URI, Version}, State)
-  when Version =/= {1, 0}, Version =/= {1, 1} ->
-    {stop, 505, State};
 %% @todo We need to cleanup the URI properly.
-parse_request({http_request, Method, {abs_path, AbsPath}, Version},
-	      State) ->
+parse_request({http_request, Method, {abs_path, AbsPath}, Version}, State) ->
     {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
 							  connection=ConnAtom, method=Method, version=Version,
 							  path=Path, raw_path=RawPath, raw_qs=Qs}});
-parse_request({http_request, Method, {absoluteURI, http, RawHost, undefined, AbsPath}, Version},
-	      State = #state{transport=Transport}) ->
+parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPath}, Version},
+		State=#state{transport=Transport}) ->
     {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
-    case catch agilitycache_dispatcher:split_host(RawHost2) of 
-	{Host, RawHost3, undefined} ->
-	    Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
-	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-								  connection=ConnAtom, method=Method, version=Version,
-								  path=Path, raw_path=RawPath, raw_qs=Qs,
-								  host=Host, raw_host=RawHost3, port=Port,
-								  headers=[{'Host', RawHost3}]}});
+    DefaultPort = agilitycache_http_protocol_parser:default_port(Transport:name()),
+    State2 = case {RawPort, agilitycache_dispatcher:split_host(RawHost2)} of
+		 {DefaultPort, {Host, RawHost3, _}} ->
+		     State#state{connection=ConnAtom, http_req=#http_req{
+							connection=ConnAtom, method=Method, version=Version,
+							path=Path, raw_path=RawPath, raw_qs=Qs,
+							host=Host, raw_host=RawHost3, port=DefaultPort,
+							headers=[{'Host', RawHost3}]}};
+		 {_, {Host, RawHost3, DefaultPort}} ->
+		     State#state{connection=ConnAtom, http_req=#http_req{
+							connection=ConnAtom, method=Method, version=Version,
+							path=Path, raw_path=RawPath, raw_qs=Qs,
+							host=Host, raw_host=RawHost3, port=DefaultPort,
+							headers=[{'Host', RawHost3}]}};
+		 {undefined, {Host, RawHost3, undefined}} ->
+		     State#state{connection=ConnAtom, http_req=#http_req{
+							connection=ConnAtom, method=Method, version=Version,
+							path=Path, raw_path=RawPath, raw_qs=Qs,
+							host=Host, raw_host=RawHost3, port=DefaultPort,
+							headers=[{'Host', RawHost3}]}};
+		 {undefined, {Host, RawHost3, Port}} ->
+			 BinaryPort = list_to_binary(integer_to_list(Port)),
+		     State#state{connection=ConnAtom, http_req=#http_req{
+							connection=ConnAtom, method=Method, version=Version,
+							path=Path, raw_path=RawPath, raw_qs=Qs,
+							host=Host, raw_host=RawHost3, port=Port,
+							headers=[{'Host', << RawHost3/binary, ":", BinaryPort/binary>>}]}};
+		 {Port, {Host, RawHost3, _}} ->
+			 BinaryPort = list_to_binary(integer_to_list(Port)),
+		     State#state{connection=ConnAtom, http_req=#http_req{
+							connection=ConnAtom, method=Method, version=Version,
+							path=Path, raw_path=RawPath, raw_qs=Qs,
+							host=Host, raw_host=RawHost3, port=Port,
+							headers=[{'Host', << RawHost3/binary, ":", BinaryPort/binary >>}]}};
+		 _ ->
+		     {stop, {http_error, 400}, State}
 
-	{Host, RawHost3, Port} ->
-	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-								  connection=ConnAtom, method=Method, version=Version,
-								  path=Path, raw_path=RawPath, raw_qs=Qs,
-								  host=Host, raw_host=RawHost3, port=Port,
-								  headers=[{'Host', << RawHost3, ":", Port>>}]}});
-	_ ->
-	    {stop, 400, State}
-    end;
-
-parse_request({http_request, Method, {absoluteURI, http, RawHost, Port, AbsPath}, Version},
-	      State) ->
-    {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
-    ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
-    RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
-    case catch agilitycache_dispatcher:split_host(RawHost2) of
-	{Host, RawHost3, undefined} ->
-	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-								  connection=ConnAtom, method=Method, version=Version,
-								  path=Path, raw_path=RawPath, raw_qs=Qs,
-								  host=Host, raw_host=RawHost3, port=Port,
-								  headers=[{'Host', RawHost3}]}});
-
-	{Host, RawHost3, Port2} ->
-	    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-								  connection=ConnAtom, method=Method, version=Version,
-								  path=Path, raw_path=RawPath, raw_qs=Qs,
-								  host=Host, raw_host=RawHost3, port=Port2,
-								  headers=[{'Host', << RawHost3, ":", Port>>}]}});
-	_ ->
-	    {stop, 400, State}
-    end;
-
-parse_request({http_request, Method, '*', Version}, State) ->
-    ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
-    start_parse_header(State#state{connection=ConnAtom, http_req=#http_req{
-							  connection=ConnAtom, method=Method, version=Version,
-							  path='*', raw_path= <<"*">>, raw_qs= <<>>}});
+	     end,
+	case State2 of
+		{stop, _, _} ->
+			State2;
+		_ ->
+			start_parse_header(State2)
+	end;
 parse_request({http_request, _Method, _URI, _Version}, State) ->
-    {stop, 501, State};
+    {stop, {http_error, 501}, State};
 parse_request({http_error, <<"\r\n">>},
 	      State=#state{req_empty_lines=N, max_empty_lines=N}) ->
-    {stop, 400, State};
+    {stop, {http_error, 400}, State};
 parse_request({http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}) ->
     start_parse_request(State#state{req_empty_lines=N + 1});
 parse_request({http_error, _Any}, State) ->
-    {stop, 400, State}.
+    {stop, {http_error, 400}, State};
+parse_request(Shit, State) ->
+	unexpected(Shit, State),
+	{stop, {http_error, 500}, State}.
 
 %%-spec start_parse_header(#http_req{}, #state{}) -> ok.
 start_parse_header(State=#state{buffer=Buffer}) ->
@@ -211,7 +207,7 @@ start_parse_header(State=#state{buffer=Buffer}) ->
 	{more, _Length} -> 
 	    wait_header(State);
 	{error, _Reason} -> 
-	    {stop, 400, State}
+	    {stop, {http_error, 400}, State}
     end.
 
 %%-spec wait_header(#http_req{}, #state{}) -> ok.
@@ -220,28 +216,40 @@ wait_header(State=#state{socket=Socket, transport=Transport, timeout=T, buffer=B
 	{ok, Data} -> 
 	    start_parse_header(State#state{buffer= << Buffer/binary, Data/binary >>});
 	{error, timeout} -> 
-	    {stop, 408, State};
+	    {stop, {http_error, 408}, State};
 	{error, closed} -> 
-	    {stop, 500, State}
+	    {stop, {http_error, 500}, State}
     end.
 
 %% -spec header({http_header, integer(), http_header(), any(), binary()} | http_eoh, #http_req{}, #state{}) -> ok.
 parse_header({http_header, _I, 'Host', _R, RawHost}, 
 	     State = #state{transport=Transport, http_req=Req=#http_req{host=undefined}}) ->
     RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
-    case catch agilitycache_dispatcher:split_host(RawHost2) of
-	{Host, RawHost3, undefined} ->
-	    Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
-	    start_parse_header(State#state{http_req=Req#http_req{
-						      host=Host, raw_host=RawHost3, port=Port,
-						      headers=[{'Host', RawHost3}|Req#http_req.headers]}});
-	{Host, RawHost3, Port} ->
-	    start_parse_header(State#state{http_req=Req#http_req{
-						      host=Host, raw_host=RawHost3, port=Port,
-						      headers=[{'Host', RawHost3}|Req#http_req.headers]}} );
-	{'EXIT', _Reason} ->
-	    {stop, 400, State}
-    end;
+    DefaultPort = agilitycache_http_protocol_parser:default_port(Transport:name()),
+    State2 = case agilitycache_dispatcher:split_host(RawHost2) of
+		 {Host, RawHost3, DefaultPort} ->
+		     State#state{http_req=Req#http_req{
+					    host=Host, raw_host=RawHost3, port=DefaultPort,
+					    headers=[{'Host', RawHost3}|Req#http_req.headers]}};
+		 {Host, RawHost3, undefined} ->
+		     State#state{http_req=Req#http_req{
+					    host=Host, raw_host=RawHost3, port=DefaultPort,
+					    headers=[{'Host', RawHost3}|Req#http_req.headers]}};
+		 {Host, RawHost3, Port}->
+			 BinaryPort = list_to_binary(integer_to_list(Port)),
+		     State#state{http_req=Req#http_req{
+					    host=Host, raw_host=RawHost3, port=Port,
+					    headers=[{'Host', << RawHost3/binary, ":", BinaryPort/binary>>}|Req#http_req.headers]}};
+		 _ ->
+		     {stop, {http_error, 400}, State}
+
+	     end,
+	  case State2 of
+		{stop, _, _} ->
+			State2;
+		_ ->
+			start_parse_header(State2)
+	 end;
 %% Ignore Host headers if we already have it.
 parse_header({http_header, _I, 'Host', _R, _V}, State) ->
     start_parse_header(State);
@@ -254,7 +262,7 @@ parse_header({http_header, _I, Field, _R, Value}, State = #state{http_req=Req}) 
     start_parse_header(State#state{http_req=Req#http_req{headers=[{Field2, Value}|Req#http_req.headers]}});
 %% The Host header is required in HTTP/1.1.
 parse_header(http_eoh, State=#state{http_req=Req}) when Req#http_req.version=:= {1, 1} andalso Req#http_req.host=:=undefined ->
-    {stop, 400, State};
+    {stop, {http_error, 400}, State};
 %% It is however optional in HTTP/1.0.
 %% @todo Devia ser um erro, host undefined o.O
 parse_header(http_eoh, State=#state{transport=Transport, http_req=Req=#http_req{version={1, 0}, host=undefined}}) ->
@@ -267,7 +275,7 @@ parse_header(http_eoh, State=#state{http_req=Req}) ->
     %% Ok, terminar aqui, e esperar envio!
     {reply, {ok, Req}, idle_wait, State};
 parse_header({http_error, _Bin}, State) ->
-    {stop, 500, State}.
+    {stop, {http_error, 500}, State}.
 
 idle_wait(get_body, From, State) ->
     do_get_body(State#state{from=From});
@@ -304,8 +312,11 @@ do_send_data(State=#state{
     case Transport:send(Socket, Data) of
 	ok -> 
 	    {next_state, idle_wait, State#state{buffer= <<>>}};
+	{error, closed} -> 
+		%% @todo Eu devia alertar sobre isso, não?
+		{stop, normal, State};
 	{error, Reason} -> 
-	    {stop, Reason, State}
+	    {stop, {error, Reason}, State}
     end.
 
 %%-spec do_terminate(#state{}) -> ok.

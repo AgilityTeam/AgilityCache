@@ -12,7 +12,6 @@
 %% Note that there is no need to monitor these processes when using Cowboy as
 %% an application as it already supervises them under the listener supervisor.
 %%
-%% @see agilitycache_dispatcher
 %% @see agilitycache_http_handler
 -module(agilitycache_http_protocol).
 
@@ -23,22 +22,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -record(state, {
-	  http_req :: #http_req{},
-	  http_rep :: #http_rep{},
-	  http_client :: pid(),
-    http_client_ref :: any(),
-	  http_server :: pid(),
-    http_server_ref :: any(),
-	  listener :: pid(),
-	  socket :: inet:socket(),
-	  transport :: module(),
-	  dispatch :: agilitycache_dispatcher:dispatch_rules(),
-	  handler :: {module(), any()},
-	  req_empty_lines = 0 :: integer(),
-	  max_empty_lines :: integer(),
-	  timeout :: timeout(),
-	  connection = keepalive :: keepalive | close,
-	  buffer = <<>> :: binary()
+	  http_protocol_fsm :: pid()
 	 }).
 
 %% API.
@@ -58,97 +42,17 @@ init(ListenerPid, Socket, Transport, Opts) ->
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
     Timeout = proplists:get_value(timeout, Opts, 5000),
     receive shoot -> ok end,
-    start_handle_request(#state{listener=ListenerPid, socket=Socket, transport=Transport,
-				dispatch=Dispatch, max_empty_lines=MaxEmptyLines, timeout=Timeout}).
-
-start_handle_request(State) ->
-    read_request(State).
-
-read_request(State = #state{socket=Socket, transport=Transport,
-			    max_empty_lines=MaxEmptyLines, timeout=Timeout}) ->
-    {ok, HttpServerPid} = 
-	agilitycache_http_protocol_server:start([
+    {ok, HttpProtocolFsmPid} = agilitycache_http_protocol_fsm:start_link([
 						      {max_empty_lines, MaxEmptyLines}, 
 						      {timeout, Timeout},
 						      {transport, Transport},
-						      {socket, Socket}]),
-    Ref = erlang:monitor(process, HttpServerPid),
-    {ok, Req} = agilitycache_http_protocol_server:receive_request(HttpServerPid),
-    receive_reply(State#state{http_req=Req, http_server=HttpServerPid, http_server_ref=Ref}).
+						      {dispatch, Dispatch},
+						      {listener, ListenerPid},
+						      {socket, Socket},
+						      {transport, Transport}]),
+    start_handle_request(#state{http_protocol_fsm = HttpProtocolFsmPid}).
 
-receive_reply(State = #state{transport=Transport, max_empty_lines=MaxEmptyLines, timeout=Timeout, http_req=Req}) ->
-    {ok, HttpClientPid} = agilitycache_http_protocol_client:start([
-						      {max_empty_lines, MaxEmptyLines}, 
-						      {timeout, Timeout},
-						      {transport, Transport},
-						      {http_req, Req}]),
-    Ref = erlang:monitor(process, HttpClientPid),
-    {Method, Req2} = agilitycache_http_req:method(Req),
-    agilitycache_http_protocol_client:start_request(HttpClientPid),
-    case agilitycache_http_protocol_parser:method_to_binary(Method) of
-		<<"POST">> ->
-			start_send_post(State#state{http_client = HttpClientPid, http_req=Req2, http_client_ref=Ref});
-		_ ->
-			{ok, Rep} = agilitycache_http_protocol_client:start_receive_reply(HttpClientPid),
-			start_send_reply(State#state{http_rep=Rep, http_client = HttpClientPid, http_req=Req2, http_client_ref=Ref})
-	end.
-	
-start_send_post(State = #state{http_req=Req}) ->
-	{Length, Req2} = agilitycache_http_req:content_length(Req),
-	case Length of
-		undefined ->
-			start_stop(State#state{http_req=Req2});
-		_ when is_binary(Length) ->
-			send_post(list_to_integer(binary_to_list(Length)), State#state{http_req=Req2});
-		_ when is_integer(Length) ->
-			send_post(Length, State#state{http_req=Req2})
-	end.
-	
-send_post(Length, State = #state{http_client = HttpClientPid, http_server = HttpServerPid}) ->
-		%% Esperamos que isso seja sucesso, então deixa dar pau se não for sucesso
-		{ok, Data} = agilitycache_http_protocol_server:get_body(HttpServerPid),
-		DataSize = iolist_size(Data),
-		Restant = Length - DataSize,
-		case Restant of
-			0 ->
-				agilitycache_http_protocol_client:send_data(HttpClientPid, Data),
-				{ok, Rep} = agilitycache_http_protocol_client:start_receive_reply(HttpClientPid),
-				start_send_reply(State#state{http_rep=Rep});
-			_ when Restant > 0 ->
-				agilitycache_http_protocol_client:send_data(HttpClientPid, Data),
-				send_post(Restant, State);
-			_ ->
-				start_stop(State)
-		end.
-	
+start_handle_request(_State = #state{http_protocol_fsm = HttpProtocolFsmPid}) ->
+    agilitycache_http_protocol_fsm:start_handle_request(HttpProtocolFsmPid).
 
-start_send_reply(State = #state{http_req=Req, http_rep=Rep, http_server=HttpServerPid}) ->
-  {Status, Rep2} = agilitycache_http_rep:status(Rep),
-  {Headers, Rep3} = agilitycache_http_rep:headers(Rep2),
-  {Length, Rep4} = agilitycache_http_rep:content_length(Rep3),
-  {ok, Req2} = agilitycache_http_req:start_reply(HttpServerPid, Status, Headers, Length, Req),
-  send_reply(State#state{http_rep=Rep4, http_req=Req2}).
-  
-send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerPid, http_req=Req}) ->
-    %% Bem... oo servidor pode fechar, e isso não nos afeta muito, então
-    %% gerencia aqui se fechar/timeout.
-	case agilitycache_http_protocol_client:get_body(HttpClientPid) of
-		{ok, Data} ->
-			case iolist_size(Data) of
-				0 ->
-					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-					start_stop(State);
-				_ ->
-					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-					send_reply(State)
-			end;
-		_ -> %% closed, timeout or other shitty thing
-			start_stop(State)
-	end.
 
-start_stop(#state{http_client = HttpClientPid, http_client_ref=ClientRef,
-                  http_server = HttpServerPid, http_server_ref=ServerRef}) ->
-  erlang:demonitor(ClientRef),
-  agilitycache_http_protocol_client:stop(HttpClientPid),
-  erlang:demonitor(ServerRef),
-  agilitycache_http_protocol_server:stop(HttpServerPid).

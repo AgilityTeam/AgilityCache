@@ -31,8 +31,6 @@
 	 do_send_data/1]).
 
 
--define(SERVER, ?MODULE).
-
 -record(state, {
 	  http_req :: #http_req{},
 	  http_rep :: #http_rep{},
@@ -126,9 +124,13 @@ init(Opts) ->
 start_connect(start_request, From, State = #state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
-    {ok, Socket} = Transport:connect(binary_to_list(RawHost), Port, [], Timeout),
-    start_send(State#state{http_req = HttpReq1, socket = Socket, from = From}).
-    
+    case Transport:connect(binary_to_list(RawHost), Port, [], Timeout) of
+		{ok, Socket} ->
+			Transport:controlling_process(Socket, self()),
+			start_send(State#state{http_req = HttpReq1, socket = Socket, from = From});
+		{error, Reason} ->
+			{stop, {error, Reason}, State}
+	end.
 
 start_send(State = #state{socket=Socket, transport=Transport, http_req=HttpReq}) ->
     Packet = agilitycache_http_req:request_head(HttpReq),
@@ -136,7 +138,7 @@ start_send(State = #state{socket=Socket, transport=Transport, http_req=HttpReq})
 	ok -> 
 	    {reply, ok, idle_wait, State};
 	{error, Reason} -> 
-	    {stop, Reason, State}
+	    {stop, {error, Reason}, State}
     end.
 
 %%-spec wait_reply(#state{}) -> ok.
@@ -146,7 +148,7 @@ wait_reply(State = #state{socket=Socket, transport=Transport,
         {ok, Data} -> 
 			start_parse_reply(State#state{buffer= << Buffer/binary, Data/binary >>});
         {error, Reason} ->
-			{stop, Reason, State}
+			{stop, {error, Reason}, State}
     end.
 
 %% @private
@@ -159,7 +161,7 @@ start_parse_reply(State=#state{buffer=Buffer}) ->
 	{more, _Length} -> 
 	    wait_reply(State);
 	{error, Reason} -> 
-	    {stop, Reason, State}
+	    {stop, {error, Reason}, State}
     end. 
 
 %%-spec parse_reply(start_request, _From, {{http_response, http_version(), http_status(), http_string()}, #state{}}) -> ok.
@@ -173,11 +175,11 @@ parse_reply({{http_response, Version, Status, String}, State}) ->
 		}      
     );
 parse_reply({{http_error, <<"\r\n">>}, State=#state{req_empty_lines=N, max_empty_lines=N}}) ->
-    {stop, 400, State};
+    {stop, {http_error, 400}, State};
 parse_reply({Data={http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}}) ->
     {next_state, parse_reply, {Data, State#state{req_empty_lines=N + 1}}};
 parse_reply({{http_error, _Any}, State}) ->
-    {stop, 400, State}.
+    {stop, {http_error, 400}, State}.
 
 %%-spec start_parse_header(_Event, #state{}) -> ok.
 start_parse_header(State=#state{buffer=Buffer}) ->
@@ -187,7 +189,7 @@ start_parse_header(State=#state{buffer=Buffer}) ->
 	{more, _Length} -> 
 	    wait_header(State);
 	{error, _Reason} ->
-	    {stop, 400, State}
+	    {stop, {http_error, 400}, State}
     end.
 
 %%-spec wait_header(#http_req{}, #state{}) -> ok.
@@ -197,7 +199,7 @@ wait_header(State=#state{socket=Socket,
 	{ok, Data} -> 
 	    start_parse_header(State#state{buffer= << Buffer/binary, Data/binary >>});
 	{error, Reason} -> 
-	    {stop, Reason, State}
+	    {stop, {error, Reason}, State}
     end.
 
 %%-spec header({http_header, integer(), http_header(), any(), binary()}
@@ -219,7 +221,7 @@ parse_header({http_eoh, State=#state{http_rep=Rep}}) ->
     %%	OK, esperar pedido do cliente.
     {reply, {ok, Rep}, idle_wait, State};
 parse_header({{http_error, _Bin}, State}) ->
-    {stop, 500, State}.
+    {stop, {http_error, 500}, State}.
     
 idle_wait(start_receive_reply, From, State) ->
 	start_parse_reply(State#state{from=From});
@@ -259,8 +261,11 @@ do_send_data(State=#state{
     case Transport:send(Socket, Data) of
 	ok -> 
 	    {next_state, idle_wait, State#state{buffer= <<>>}};
+	{error, closed} -> 
+		%% @todo Eu devia alertar sobre isso, não?
+		{stop, normal, State};
 	{error, Reason} -> 
-	    {stop, Reason, State}
+	    {stop, {error, Reason}, State}
     end.
 
 %%-spec do_terminate(#state{}) -> ok.
