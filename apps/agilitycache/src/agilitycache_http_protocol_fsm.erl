@@ -30,14 +30,9 @@
 	  listener :: pid(),
 	  socket :: inet:socket(),
 	  transport :: module(),
-	  dispatch :: agilitycache_dispatcher:dispatch_rules(),
-	  handler :: {module(), any()},
 	  req_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
-	  timeout :: timeout(),
-	  connection = keepalive :: keepalive | close,
-	  buffer = <<>> :: binary(),
-	  from :: pid()
+	  timeout :: timeout()
 	 }).
 
 %%%===================================================================
@@ -93,9 +88,9 @@ init(Opts) ->
     {ok, start_handle_request, #state{http_req=HttpReq, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
     listener=ListenerPid, socket=ServerSocket}}.
 
-start_handle_request(start, From, State) ->
-    read_request(State#state{from=From}).
-
+start_handle_request(start, _From, State) ->
+    read_request(State).
+    
 read_request(State = #state{socket=Socket, transport=Transport,
 			    max_empty_lines=MaxEmptyLines, timeout=Timeout}) ->
     {ok, HttpServerPid} = 
@@ -105,6 +100,7 @@ read_request(State = #state{socket=Socket, transport=Transport,
 						      {transport, Transport},
 						      {socket, Socket}]),
     Ref = erlang:monitor(process, HttpServerPid),
+    ok = Transport:controlling_process(Socket, HttpServerPid),						      
     {ok, Req} = agilitycache_http_protocol_server:receive_request(HttpServerPid),
     receive_reply(State#state{http_req=Req, http_server=HttpServerPid, http_server_ref=Ref}).
 

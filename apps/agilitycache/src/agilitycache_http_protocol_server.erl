@@ -26,7 +26,7 @@
 	 idle_wait/3,
 	 do_get_body/1,
 	 idle_wait/2,
-	 do_send_data/1]).		 
+	 do_send_data/2]).		 
 
 -define(SERVER, ?MODULE).
 
@@ -38,8 +38,7 @@
 	  max_empty_lines :: integer(),
 	  timeout :: timeout(),
 	  connection = keepalive :: keepalive | close,
-	  buffer = <<>> :: binary(),
-	  from :: pid()
+	  buffer = <<>> :: binary()
 	 }).
 
 receive_request(OwnPid) ->
@@ -101,9 +100,8 @@ init(Opts) ->
     {ok, start_receive_request, #state{timeout=Timeout, 
 				       max_empty_lines=MaxEmptyLines, transport=Transport, socket=Socket }}.
 
-start_receive_request(receive_request, From, State=#state{socket=Socket, transport=Transport}) ->
-	Transport:controlling_process(Socket, self()),
-    wait_request(State#state{from=From}).
+start_receive_request(receive_request, _From, State) ->
+    wait_request(State).
 
 %%-spec wait_request(#state{}) -> ok.
 wait_request(State=#state{socket=Socket, transport=Transport,
@@ -277,15 +275,15 @@ parse_header(http_eoh, State=#state{http_req=Req}) ->
 parse_header({http_error, _Bin}, State) ->
     {stop, {http_error, 500}, State}.
 
-idle_wait(get_body, From, State) ->
-    do_get_body(State#state{from=From});
+idle_wait(get_body, _From, State) ->
+    do_get_body(State);
 %% different call from someone else. Not supported! Let it die.
 idle_wait(Event, _From, State) ->
     unexpected(Event, idle_wait),
     {next_state, idle_wait, State}.
 
 idle_wait({send_data, Data}, State) ->
-    do_send_data(State#state{buffer=Data});
+    do_send_data(Data, State);
 idle_wait(Event, State) ->
     unexpected(Event, idle_wait),
     {next_state, idle_wait, State}.
@@ -307,8 +305,8 @@ do_get_body(State=#state{
 do_get_body(State=#state{buffer=Buffer})->
     {reply, {ok, Buffer}, idle_wait, State#state{buffer = <<>>}}.
 
-do_send_data(State=#state{
-	       socket=Socket, transport=Transport, buffer=Data}) ->
+do_send_data(Data, State=#state{
+	       socket=Socket, transport=Transport}) ->
     case Transport:send(Socket, Data) of
 	ok -> 
 	    {next_state, idle_wait, State#state{buffer= <<>>}};

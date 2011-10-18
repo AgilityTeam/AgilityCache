@@ -50,6 +50,7 @@ init(ListenerPid, Socket, Transport, Opts) ->
 						      {listener, ListenerPid},
 						      {socket, Socket},
 						      {transport, Transport}]),
+    ok = Transport:controlling_process(Socket, HttpProtocolFsmPid),						      
     start_handle_request(#state{http_protocol_fsm = HttpProtocolFsmPid}).
 
 start_handle_request(_State = #state{http_protocol_fsm = HttpProtocolFsmPid}) ->

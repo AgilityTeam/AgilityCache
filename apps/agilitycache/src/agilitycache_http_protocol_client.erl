@@ -28,7 +28,7 @@
 	 idle_wait/3,
 	 do_get_body/1,
 	 idle_wait/2,
-	 do_send_data/1]).
+	 do_send_data/2]).
 
 
 -record(state, {
@@ -41,8 +41,7 @@
 	  max_empty_lines :: integer(),
 	  timeout :: timeout(),
 	  connection = keepalive :: keepalive | close,
-	  buffer = <<>> :: binary(),
-	  from :: pid()
+	  buffer = <<>> :: binary()
 	 }).
 
 start_request(OwnPid) ->
@@ -121,13 +120,13 @@ init(Opts) ->
 %% @end
 %%--------------------------------------------------------------------
 
-start_connect(start_request, From, State = #state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
+start_connect(start_request, _From, State = #state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
     case Transport:connect(binary_to_list(RawHost), Port, [], Timeout) of
 		{ok, Socket} ->
-			Transport:controlling_process(Socket, self()),
-			start_send(State#state{http_req = HttpReq1, socket = Socket, from = From});
+			ok = Transport:controlling_process(Socket, self()),
+			start_send(State#state{http_req = HttpReq1, socket = Socket});
 		{error, Reason} ->
 			{stop, {error, Reason}, State}
 	end.
@@ -223,18 +222,18 @@ parse_header({http_eoh, State=#state{http_rep=Rep}}) ->
 parse_header({{http_error, _Bin}, State}) ->
     {stop, {http_error, 500}, State}.
     
-idle_wait(start_receive_reply, From, State) ->
-	start_parse_reply(State#state{from=From});
+idle_wait(start_receive_reply, _From, State) ->
+	start_parse_reply(State);
 
-idle_wait(get_body, From, State) ->
-    do_get_body(State#state{from=From});
+idle_wait(get_body, _From, State) ->
+    do_get_body(State);
 %% different call from someone else. Not supported! Let it die.
 idle_wait(Event, _From, State) ->
     unexpected(Event, idle_wait),
     {next_state, idle_wait, State}.
 
 idle_wait({send_data, Data}, State) ->
-    do_send_data(State#state{buffer=Data});
+    do_send_data(Data, State);
 idle_wait(Event, State) ->
     unexpected(Event, idle_wait),
     {next_state, idle_wait, State}.
@@ -256,11 +255,11 @@ do_get_body(State=#state{
 do_get_body(State=#state{buffer = Buffer}) ->
     {reply, {ok, Buffer}, idle_wait, State#state{buffer = <<>>}}.
     
-do_send_data(State=#state{
-			       socket=Socket, transport=Transport, buffer=Data}) ->
+do_send_data(Data, State=#state{
+			       socket=Socket, transport=Transport}) ->
     case Transport:send(Socket, Data) of
 	ok -> 
-	    {next_state, idle_wait, State#state{buffer= <<>>}};
+	    {next_state, idle_wait, State};
 	{error, closed} -> 
 		%% @todo Eu devia alertar sobre isso, não?
 		{stop, normal, State};
