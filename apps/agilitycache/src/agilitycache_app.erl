@@ -14,3 +14,10 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+%%
+%% Tests
+%%
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.

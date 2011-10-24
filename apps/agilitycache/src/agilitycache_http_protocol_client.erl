@@ -4,7 +4,6 @@
 
 -include_lib("kernel/include/inet.hrl").
 -include("include/http.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 %% API
 -export([start_link/1, start/1]).
@@ -18,7 +17,7 @@
          code_change/4]).
 
 -export([start_request/1,
-     start_receive_reply/1,
+	 start_receive_reply/1,
 	 get_body/1,
 	 send_data/2,
 	 stop/1,
@@ -47,16 +46,16 @@
 start_request(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, start_request, infinity).
 start_receive_reply(OwnPid) ->
-	gen_fsm:sync_send_event(OwnPid, start_receive_reply, infinity).
+    gen_fsm:sync_send_event(OwnPid, start_receive_reply, infinity).
 get_body(OwnPid) ->
     gen_fsm:sync_send_event(OwnPid, get_body, infinity).
 send_data(OwnPid, Data) ->
-	gen_fsm:send_event(OwnPid, {send_data, Data}).
+    gen_fsm:send_event(OwnPid, {send_data, Data}).
 stop(OwnPid) ->
     gen_fsm:send_all_state_event(OwnPid, stop).	    
 get_transport_socket(OwnPid) ->
-	gen_fsm:sync_send_all_state_event(OwnPid, get_transport_socket).
-	
+    gen_fsm:sync_send_all_state_event(OwnPid, get_transport_socket).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -73,7 +72,7 @@ get_transport_socket(OwnPid) ->
 -spec start_link(any()) -> {ok, pid()}.
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
-    
+
 -spec start(any()) -> {ok, pid()}.
 start(Opts) ->
     gen_fsm:start(?MODULE, Opts, []).
@@ -124,12 +123,12 @@ start_connect(start_request, _From, State = #state{http_req = HttpReq, transport
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
     case Transport:connect(binary_to_list(RawHost), Port, [], Timeout) of
-		{ok, Socket} ->
-			ok = Transport:controlling_process(Socket, self()),
-			start_send(State#state{http_req = HttpReq1, socket = Socket});
-		{error, Reason} ->
-			{stop, {error, Reason}, State}
-	end.
+	{ok, Socket} ->
+	    ok = Transport:controlling_process(Socket, self()),
+	    start_send(State#state{http_req = HttpReq1, socket = Socket});
+	{error, Reason} ->
+	    {stop, {error, Reason}, State}
+    end.
 
 start_send(State = #state{socket=Socket, transport=Transport, http_req=HttpReq}) ->
     Packet = agilitycache_http_req:request_head(HttpReq),
@@ -142,12 +141,12 @@ start_send(State = #state{socket=Socket, transport=Transport, http_req=HttpReq})
 
 %%-spec wait_reply(#state{}) -> ok.
 wait_reply(State = #state{socket=Socket, transport=Transport,
-					      timeout=T, buffer=Buffer}) ->
+			  timeout=T, buffer=Buffer}) ->
     case Transport:recv(Socket, 0, T) of
         {ok, Data} -> 
-			start_parse_reply(State#state{buffer= << Buffer/binary, Data/binary >>});
+	    start_parse_reply(State#state{buffer= << Buffer/binary, Data/binary >>});
         {error, Reason} ->
-			{stop, {error, Reason}, State}
+	    {stop, {error, Reason}, State}
     end.
 
 %% @private
@@ -169,10 +168,10 @@ start_parse_reply(State=#state{buffer=Buffer}) ->
 parse_reply({{http_response, Version, Status, String}, State}) ->
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     start_parse_header(
-     State#state{connection=ConnAtom, 
-		 http_rep=#http_rep{connection=ConnAtom, status=Status, version=Version, string=String}
-		}      
-    );
+      State#state{connection=ConnAtom, 
+		  http_rep=#http_rep{connection=ConnAtom, status=Status, version=Version, string=String}
+		 }      
+     );
 parse_reply({{http_error, <<"\r\n">>}, State=#state{req_empty_lines=N, max_empty_lines=N}}) ->
     {stop, {http_error, 400}, State};
 parse_reply({Data={http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}}) ->
@@ -193,7 +192,7 @@ start_parse_header(State=#state{buffer=Buffer}) ->
 
 %%-spec wait_header(#http_req{}, #state{}) -> ok.
 wait_header(State=#state{socket=Socket,
-					       transport=Transport, timeout=T, buffer=Buffer}) ->
+			 transport=Transport, timeout=T, buffer=Buffer}) ->
     case Transport:recv(Socket, 0, T) of
 	{ok, Data} -> 
 	    start_parse_header(State#state{buffer= << Buffer/binary, Data/binary >>});
@@ -206,24 +205,24 @@ wait_header(State=#state{socket=Socket,
 parse_header({{http_header, _I, 'Connection', _R, Connection}, State=#state{http_rep=Rep}}) ->
     ConnAtom = agilitycache_http_protocol_parser:connection_to_atom(Connection),
     start_parse_header( 
-     State#state{
-       connection=ConnAtom, 
-       http_rep=Rep#http_rep{connection=ConnAtom,
-			     headers=[{'Connection', Connection}|Rep#http_rep.headers]
-			    }});
+      State#state{
+	connection=ConnAtom, 
+	http_rep=Rep#http_rep{connection=ConnAtom,
+			      headers=[{'Connection', Connection}|Rep#http_rep.headers]
+			     }});
 parse_header({{http_header, _I, Field, _R, Value}, State=#state{http_rep=Rep}}) ->
     Field2 = agilitycache_http_protocol_parser:format_header(Field),
     start_parse_header(
-     State#state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
+      State#state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
 parse_header({http_eoh, State=#state{http_rep=Rep}}) ->
     %%	dispatch(fun handler_init/2, Req#http_req{buffer=Buffer}, State#state{buffer= <<>>});
     %%	OK, esperar pedido do cliente.
     {reply, {ok, Rep}, idle_wait, State};
 parse_header({{http_error, _Bin}, State}) ->
     {stop, {http_error, 500}, State}.
-    
+
 idle_wait(start_receive_reply, _From, State) ->
-	start_parse_reply(State);
+    start_parse_reply(State);
 
 idle_wait(get_body, _From, State) ->
     do_get_body(State);
@@ -240,37 +239,37 @@ idle_wait(Event, State) ->
 
 %% Empty buffer
 do_get_body(State=#state{
-			       socket=Socket, transport=Transport, timeout=T, buffer = <<>>}) ->
+	      socket=Socket, transport=Transport, timeout=T, buffer = <<>>}) ->
     case Transport:recv(Socket, 0, T) of
 	{ok, Data} ->
 	    {reply, {ok, Data}, idle_wait, State};
 	{error, closed} ->
 	    {reply, closed, idle_wait, State};
 	{error, timeout} ->
-		{reply, timeout, idle_wait, State};
+	    {reply, timeout, idle_wait, State};
 	{error, Reason} ->
-		{stop, {error, Reason}, State}
+	    {stop, {error, Reason}, State}
     end;
 %% Non empty buffer
 do_get_body(State=#state{buffer = Buffer}) ->
     {reply, {ok, Buffer}, idle_wait, State#state{buffer = <<>>}}.
-    
+
 do_send_data(Data, State=#state{
-			       socket=Socket, transport=Transport}) ->
+		     socket=Socket, transport=Transport}) ->
     case Transport:send(Socket, Data) of
 	ok -> 
 	    {next_state, idle_wait, State};
 	{error, closed} -> 
-		%% @todo Eu devia alertar sobre isso, não?
-		{stop, normal, State};
+	    %% @todo Eu devia alertar sobre isso, não?
+	    {stop, normal, State};
 	{error, Reason} -> 
 	    {stop, {error, Reason}, State}
     end.
 
 %%-spec do_terminate(#state{}) -> ok.
 do_terminate(#state{socket=Socket, transport=Transport}) ->
-	Transport:close(Socket),
-	ok.    
+    Transport:close(Socket),
+    ok.    
 
 %%--------------------------------------------------------------------
 %% @private
@@ -304,8 +303,8 @@ do_terminate(#state{socket=Socket, transport=Transport}) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_event(stop, _StateName, StateData) ->
-	do_terminate(StateData),
-	{stop, normal, StateData};
+    do_terminate(StateData),
+    {stop, normal, StateData};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -326,8 +325,8 @@ handle_event(_Event, StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_sync_event(get_transport_socket, _From, StateName, State = #state{socket=Socket, transport=Transport}) ->
-	Reply = {Socket, Transport},
-	{reply, Reply, StateName, State};
+    Reply = {Socket, Transport},
+    {reply, Reply, StateName, State};
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.

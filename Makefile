@@ -1,43 +1,37 @@
-# See LICENSE for licensing information.
-
 DIALYZER = dialyzer
-REBAR = rebar
+REBAR=`which rebar || ./rebar`
 
-all: app
-
-app: deps
-	@$(REBAR) compile
+all: deps compile
 
 deps:
-	@$(REBAR) get-deps
-
+	    @$(REBAR) get-deps
+compile:
+	    @$(REBAR) compile
+test:
+	    @$(REBAR) skip_deps=true eunit
 clean:
-	@$(REBAR) clean
-	rm -f test/*.beam
-	rm -f erl_crash.dump
-	rm -f ebin/*.app
-	rm -rf rel/mynode
-
-tests: clean app eunit ct
-
-eunit:
-	@$(REBAR) eunit skip_deps=true
-
-ct:
-	@$(REBAR) ct
-
+	    @$(REBAR) clean
+			
 build-plt:
 	@$(DIALYZER) --build_plt --output_plt .agilitycache_dialyzer.plt \
-		--apps kernel stdlib sasl inets
+		--apps kernel stdlib sasl erts ssl \
+		tools os_mon runtime_tools crypto \
+		inets \
+		eunit syntax_tools compiler
 
 dialyze:
 	@$(DIALYZER) --src --plt .agilitycache_dialyzer.plt \
-		-Wbehaviours -Werror_handling \
-		-Wrace_conditions -Wunmatched_returns -r apps
-		
+		-Wunmatched_returns \
+		-Werror_handling \
+		-Wrace_conditions \
+		-Wbehaviours \
+		-Wunderspecs \
+		-r apps
 
 docs:
 	@$(REBAR) doc
 
-generate: app
+generate: deps compile
 	@$(REBAR) generate
+
+.PHONY: all test clean deps docs

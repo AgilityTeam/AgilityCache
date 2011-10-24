@@ -3,7 +3,6 @@
 -behaviour(gen_fsm).
 
 -include("include/http.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 %% API
 -export([start_link/1, start/1]).
@@ -136,7 +135,7 @@ parse_request({http_request, Method, {abs_path, AbsPath}, Version}, State) ->
 							  connection=ConnAtom, method=Method, version=Version,
 							  path=Path, raw_path=RawPath, raw_qs=Qs}});
 parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPath}, Version},
-		State=#state{transport=Transport}) ->
+	      State=#state{transport=Transport}) ->
     {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
@@ -161,14 +160,14 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPa
 							host=Host, raw_host=RawHost3, port=DefaultPort,
 							headers=[{'Host', RawHost3}]}};
 		 {undefined, {Host, RawHost3, Port}} ->
-			 BinaryPort = list_to_binary(integer_to_list(Port)),
+		     BinaryPort = list_to_binary(integer_to_list(Port)),
 		     State#state{connection=ConnAtom, http_req=#http_req{
 							connection=ConnAtom, method=Method, version=Version,
 							path=Path, raw_path=RawPath, raw_qs=Qs,
 							host=Host, raw_host=RawHost3, port=Port,
 							headers=[{'Host', << RawHost3/binary, ":", BinaryPort/binary>>}]}};
 		 {Port, {Host, RawHost3, _}} ->
-			 BinaryPort = list_to_binary(integer_to_list(Port)),
+		     BinaryPort = list_to_binary(integer_to_list(Port)),
 		     State#state{connection=ConnAtom, http_req=#http_req{
 							connection=ConnAtom, method=Method, version=Version,
 							path=Path, raw_path=RawPath, raw_qs=Qs,
@@ -178,12 +177,12 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPa
 		     {stop, {http_error, 400}, State}
 
 	     end,
-	case State2 of
-		{stop, _, _} ->
-			State2;
-		_ ->
-			start_parse_header(State2)
-	end;
+    case State2 of
+	{stop, _, _} ->
+	    State2;
+	_ ->
+	    start_parse_header(State2)
+    end;
 parse_request({http_request, _Method, _URI, _Version}, State) ->
     {stop, {http_error, 501}, State};
 parse_request({http_error, <<"\r\n">>},
@@ -194,8 +193,8 @@ parse_request({http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}) ->
 parse_request({http_error, _Any}, State) ->
     {stop, {http_error, 400}, State};
 parse_request(Shit, State) ->
-	unexpected(Shit, State),
-	{stop, {http_error, 500}, State}.
+    unexpected(Shit, State),
+    {stop, {http_error, 500}, State}.
 
 %%-spec start_parse_header(#http_req{}, #state{}) -> ok.
 start_parse_header(State=#state{buffer=Buffer}) ->
@@ -234,7 +233,7 @@ parse_header({http_header, _I, 'Host', _R, RawHost},
 					    host=Host, raw_host=RawHost3, port=DefaultPort,
 					    headers=[{'Host', RawHost3}|Req#http_req.headers]}};
 		 {Host, RawHost3, Port}->
-			 BinaryPort = list_to_binary(integer_to_list(Port)),
+		     BinaryPort = list_to_binary(integer_to_list(Port)),
 		     State#state{http_req=Req#http_req{
 					    host=Host, raw_host=RawHost3, port=Port,
 					    headers=[{'Host', << RawHost3/binary, ":", BinaryPort/binary>>}|Req#http_req.headers]}};
@@ -242,12 +241,12 @@ parse_header({http_header, _I, 'Host', _R, RawHost},
 		     {stop, {http_error, 400}, State}
 
 	     end,
-	  case State2 of
-		{stop, _, _} ->
-			State2;
-		_ ->
-			start_parse_header(State2)
-	 end;
+    case State2 of
+	{stop, _, _} ->
+	    State2;
+	_ ->
+	    start_parse_header(State2)
+    end;
 %% Ignore Host headers if we already have it.
 parse_header({http_header, _I, 'Host', _R, _V}, State) ->
     start_parse_header(State);
@@ -306,13 +305,13 @@ do_get_body(State=#state{buffer=Buffer})->
     {reply, {ok, Buffer}, idle_wait, State#state{buffer = <<>>}}.
 
 do_send_data(Data, State=#state{
-	       socket=Socket, transport=Transport}) ->
+		     socket=Socket, transport=Transport}) ->
     case Transport:send(Socket, Data) of
 	ok -> 
 	    {next_state, idle_wait, State#state{buffer= <<>>}};
 	{error, closed} -> 
-		%% @todo Eu devia alertar sobre isso, não?
-		{stop, normal, State};
+	    %% @todo Eu devia alertar sobre isso, não?
+	    {stop, normal, State};
 	{error, Reason} -> 
 	    {stop, {error, Reason}, State}
     end.

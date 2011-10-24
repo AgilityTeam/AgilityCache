@@ -1,6 +1,5 @@
 -module(agilitycache_http_protocol_parser).
 -include("include/http.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 -export([
 	 version_to_connection/1, 
@@ -253,6 +252,7 @@ method_to_binary(B) when is_binary(B) -> B.
 %% Tests.
 
 -ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
 
 format_header_test_() ->
     %% {Header, Result}
