@@ -7,7 +7,7 @@
 
 %% gen_fsm callbacks
 -export([init/1,
-	     start_handle_request/3,
+         start_handle_request/3,
          handle_event/3,
          handle_sync_event/4,
          handle_info/3,
@@ -26,13 +26,14 @@
 	  http_client :: pid(),
 	  http_client_ref :: any(),
 	  http_server :: pid(),
-      http_server_ref :: any(),
+	  http_server_ref :: any(),
 	  listener :: pid(),
 	  socket :: inet:socket(),
 	  transport :: module(),
 	  req_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
-	  timeout :: timeout()
+	  timeout :: timeout(),
+	  remaining_bytes = undefined
 	 }).
 
 %%%===================================================================
@@ -155,32 +156,55 @@ start_send_reply(State = #state{http_req=Req, http_rep=Rep, http_server=HttpServ
   {Headers, Rep3} = agilitycache_http_rep:headers(Rep2),
   {Length, Rep4} = agilitycache_http_rep:content_length(Rep3),
   {ok, Req2} = agilitycache_http_req:start_reply(HttpServerPid, Status, Headers, Length, Req),
-  send_reply(State#state{http_rep=Rep4, http_req=Req2}).
+  Remaining = case Length of
+	undefined -> undefined;
+	_ when is_binary(Length) ->
+		list_to_integer(binary_to_list(Length));
+	_ when is_integer(Length) -> Length
+	end,
+  send_reply(State#state{http_rep=Rep4, http_req=Req2, remaining_bytes = Remaining}).
   
-send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerPid, http_req=Req}) ->
+send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerPid, http_req=Req, remaining_bytes = Remaining}) ->
     %% Bem... oo servidor pode fechar, e isso não nos afeta muito, então
     %% gerencia aqui se fechar/timeout.
 	case agilitycache_http_protocol_client:get_body(HttpClientPid) of
 		{ok, Data} ->
-			case iolist_size(Data) of
-				0 ->
-					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-					{stop, normal, State};
-				_ ->
+			Size = iolist_size(Data),
+	  	{Ended, NewRemaining} = case {Remaining, Size} of
+        {_, 0} -> 
+          {true, Remaining};
+        {undefined, _} -> 
+          {false, Remaining};
+        _ when is_integer(Remaining) ->
+          if 
+            Remaining - Size > 0 ->
+              {false, Remaining - Size};
+            Remaining - Size == 0 ->
+              {true, Remaining - Size}
+          end
+      end,
+      %%error_logger:info_msg("Ended: ~p, Remaining ~p, Size ~p, NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
+      case Ended of
+        true ->
+          agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
+          {stop, normal, State};
+				false ->
 					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
 					send_reply(State)
 			end;
 		closed -> 
 			{stop, normal, State};
 		timeout ->
-			{stop, {error, <<"Remote Server timeout">>}, State}
+			%% {stop, {error, <<"Remote Server timeout">>}, State} %% Não quero reportar sempre que o servidor falhar conosco...
+      {stop, normal, State}
 	end.
 
 start_stop(#state{http_client = HttpClientPid, http_client_ref=ClientRef,
                   http_server = HttpServerPid, http_server_ref=ServerRef}) ->
-  erlang:demonitor(ClientRef, [flush | info]),
+  %%unexpected("Olha eu fechanado...", start_stop),
+  erlang:demonitor(ClientRef, [flush]),
   agilitycache_http_protocol_client:stop(HttpClientPid),
-  erlang:demonitor(ServerRef, [flush | info]),
+  erlang:demonitor(ServerRef, [flush]),
   agilitycache_http_protocol_server:stop(HttpServerPid).
 
 %%--------------------------------------------------------------------
@@ -257,7 +281,8 @@ handle_info(Info, StateName, Data) ->
 terminate(shutdown, _StateName, State) ->
         start_stop(State),
         ok;
-terminate(normal, _StateName, _State) ->
+terminate(normal, _StateName, State) ->
+    start_stop(State),
 		ok; %% Já foi limpado no handle_event(stop, _StateName, StateData)
 terminate(_Reason, _StateName, State) ->
         start_stop(State), %% Let crash...

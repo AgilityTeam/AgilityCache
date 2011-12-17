@@ -51,8 +51,8 @@ init([]) ->
   Dispatch = [{agilitycache_proxy_handler, []}],
   %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
   Ref = make_ref(),
-  {ok, _} = cowboy:start_listener(Ref, 100,
-    agilitycache_tcp_transport, [{port, 8080}, {max_connextions, 1024}],
+  {ok, _} = cowboy:start_listener(Ref, 1000,
+    agilitycache_tcp_transport, [{port, 8080}, {max_connextions, 4096}],
     agilitycache_http_protocol, [{dispatch, Dispatch}]
   ),
   {ok, #state{listener=Ref}}.

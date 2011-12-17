@@ -268,6 +268,7 @@ do_send_data(Data, State=#state{
 
 %%-spec do_terminate(#state{}) -> ok.
 do_terminate(#state{socket=Socket, transport=Transport}) ->
+  %%unexpected("Olha eu fechanado...", do_terminate),
     Transport:close(Socket),
     ok.    
 
@@ -358,8 +359,9 @@ handle_info(_Info, StateName, State) ->
 %% @spec terminate(Reason, StateName, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _StateName, _State) ->
-    ok.
+terminate(_Reason, _StateName, StateData) ->
+  do_terminate(StateData),
+  ok.
 
 %%--------------------------------------------------------------------
 %% @private
