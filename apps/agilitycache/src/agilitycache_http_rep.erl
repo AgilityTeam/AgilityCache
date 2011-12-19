@@ -39,12 +39,11 @@ version(Rep) ->
     {Rep#http_rep.version, Rep}.
 
 %% @doc Return the peer address and port number of the remote host.
--spec peer(pid(), #http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
-peer(HttpClientPid, Rep=#http_rep{peer=undefined}) ->
-    {Socket, Transport} = agilitycache_http_protocol_client:get_transport_socket(HttpClientPid),
+%%-spec peer(pid(), #http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+peer(Transport, Socket, Rep=#http_rep{peer=undefined}) ->
     {ok, Peer} = Transport:peername(Socket),
     {Peer, Rep#http_rep{peer=Peer}};
-peer(_HttpClientPid, Rep) ->
+peer(_Transport, _Socket, Rep) ->
     {Rep#http_rep.peer, Rep}.
 
 %% @equiv header(Name, Rep, undefined)

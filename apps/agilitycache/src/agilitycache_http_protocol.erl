@@ -41,7 +41,8 @@ init(ListenerPid, Socket, Transport, Opts) ->
     Dispatch = proplists:get_value(dispatch, Opts, []),
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
     Timeout = proplists:get_value(timeout, Opts, 5000),
-    receive shoot -> ok end,
+    cowboy:accept_ack(ListenerPid),
+    error_logger:info_msg("ack ok", []),
     {ok, HttpProtocolFsmPid} = agilitycache_http_protocol_fsm:start_link([
 						      {max_empty_lines, MaxEmptyLines}, 
 						      {timeout, Timeout},
@@ -50,10 +51,13 @@ init(ListenerPid, Socket, Transport, Opts) ->
 						      {listener, ListenerPid},
 						      {socket, Socket},
 						      {transport, Transport}]),
-    ok = Transport:controlling_process(Socket, HttpProtocolFsmPid),						      
+    ok = Transport:controlling_process(Socket, HttpProtocolFsmPid),
+    error_logger:info_msg("init", []), 
     start_handle_request(#state{http_protocol_fsm = HttpProtocolFsmPid}).
 
 start_handle_request(_State = #state{http_protocol_fsm = HttpProtocolFsmPid}) ->
-    agilitycache_http_protocol_fsm:start_handle_request(HttpProtocolFsmPid).
+  error_logger:info_msg("start_handle_request", []), 
+  agilitycache_http_protocol_fsm:start_handle_request(HttpProtocolFsmPid),
+  error_logger:info_msg("terminado", []).
 
 

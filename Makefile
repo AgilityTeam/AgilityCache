@@ -32,6 +32,7 @@ docs:
 	@$(REBAR) doc
 
 generate: deps compile
+	@rm -rf rel/mynode
 	@$(REBAR) generate
 
 .PHONY: all test clean deps docs

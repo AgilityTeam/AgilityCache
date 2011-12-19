@@ -7,7 +7,7 @@
 -module(agilitycache_http_req).
 
 -export([
-	 method/1, version/1, peer/2,
+	 method/1, version/1, peer/3,
 	 host/1, raw_host/1, port/1,
 	 path/1, raw_path/1,
 	 qs_val/2, qs_val/3, qs_vals/1, raw_qs/1,
@@ -17,9 +17,9 @@
 	]). %% Request API.
 
 -export([
-	 reply/5, 
-	 start_chunked_reply/4, send_chunk/3, stop_chunked_reply/2,
-	 start_reply/5, send_reply/3
+	 reply/6, 
+	 start_chunked_reply/5, send_chunk/4, stop_chunked_reply/3,
+	 start_reply/6
 	]). %% Response API.
 
 -export([
@@ -41,12 +41,11 @@ version(Req) ->
     {Req#http_req.version, Req}.
 
 %% @doc Return the peer address and port number of the remote host.
--spec peer(pid(), #http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
-peer(HttpServerPid, Req=#http_req{peer=undefined}) ->
-    {Socket, Transport} = agilitycache_http_protocol_server:get_transport_socket(HttpServerPid),
+%%-spec peer(pid(), #http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+peer(Transport, Socket, Req=#http_req{peer=undefined}) ->
     {ok, Peer} = Transport:peername(Socket),
     {Peer, Req#http_req{peer=Peer}};
-peer(_HttpServerPid, Req) ->
+peer(_Transport, _Socket, Req) ->
     {Req#http_req.peer, Req}.
 
 %% @doc Return the tokens for the hostname requested.
@@ -174,9 +173,9 @@ content_length(Req) ->
 %% Response API.
 
 %% @doc Send a reply to the client.
--spec reply(pid(), http_status(), http_headers(), iodata(), #http_req{})
-	   -> {ok, #http_req{}}.
-reply(HttpServerPid, Code, Headers, Body, Req=#http_req{connection=Connection, method=Method, resp_state=waiting}) ->
+%%-spec reply(pid(), http_status(), http_headers(), iodata(), #http_req{})
+%%	   -> {ok, #http_req{}}.
+reply(Transport, Socket, Code, Headers, Body, Req=#http_req{connection=Connection, method=Method, resp_state=waiting}) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
 							       {<<"Content-Length">>,
@@ -185,84 +184,156 @@ reply(HttpServerPid, Code, Headers, Body, Req=#http_req{connection=Connection, m
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
     case Method of
-	'HEAD' -> agilitycache_http_protocol_server:send_data(HttpServerPid, Head);
-	_ -> agilitycache_http_protocol_server:send_data(HttpServerPid, [Head, Body])
-    end,
-    {ok, Req#http_req{resp_state=done}}.
+      'HEAD' -> 
+      case Transport:send(Socket, Head) of
+            ok ->
+              {ok, Req#http_req{resp_state=done}};
+            {error, closed} ->
+              %% @todo Eu devia alertar sobre isso, não?
+             {ok, Req#http_req{resp_state=done}};
+            {error, _} = Error ->
+              Error
+          end;
+
+    _ ->
+      case Transport:send(Socket, [Head, Body]) of
+        ok ->
+          {ok, Req#http_req{resp_state=done}};
+        {error, closed} ->
+          %% @todo Eu devia alertar sobre isso, não?
+          {ok, Req#http_req{resp_state=done}};
+        {error, _} = Error ->
+          Error
+      end
+    end.
 
 %% @doc Send a reply to the client.
--spec start_reply(pid(), http_status(), http_headers(), integer()|binary(), #http_req{})
-		 -> {ok, #http_req{}}.
-start_reply(HttpServerPid, Code, Headers, Length, Req) when is_integer(Length) ->
-    start_reply(HttpServerPid, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
-start_reply(HttpServerPid, Code, Headers, undefined, Req=#http_req{connection=Connection, method=Method}) ->
+%%-spec start_reply(pid(), http_status(), http_headers(), integer()|binary(), #http_req{})
+%%		 -> {ok, #http_req{}}.
+start_reply(Transport, Socket, Code, Headers, Length, Req) when is_integer(Length) ->
+    start_reply(Transport, Socket, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
+start_reply(Transport, Socket, Code, Headers, undefined, Req=#http_req{connection=Connection, method=Method}) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
 							       {<<"Date">>, cowboy_clock:rfc1123()},
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
-    agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
     case Method of
-	'HEAD' -> 
-	    {ok, Req#http_req{resp_state=done}};
-	_ -> 
-	    {ok, Req#http_req{resp_state=waiting}}
-    end;
-start_reply(HttpServerPid, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) when is_binary(Length) ->
+        'HEAD' ->
+        case Transport:send(Socket, Head) of
+              ok ->
+                {ok, Req#http_req{resp_state=done}};
+              {error, closed} ->
+                %% @todo Eu devia alertar sobre isso, não?
+               {ok, Req#http_req{resp_state=done}};
+              {error, _} = Error ->
+                Error
+            end;
+  
+      _ ->
+        case Transport:send(Socket, Head) of
+          ok ->
+            {ok, Req#http_req{resp_state=waiting}};
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+            {ok, Req#http_req{resp_state=done}};
+          {error, _} = Error ->
+            Error
+        end
+      end;
+start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) when is_binary(Length) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
 							       {<<"Content-Length">>,Length},
 							       {<<"Date">>, cowboy_clock:rfc1123()},
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
-    agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
     case Method of
-	'HEAD' -> 
-	    {ok, Req#http_req{resp_state=done}};
-	_ -> 
-	    {ok, Req#http_req{resp_state=waiting}}
-    end.
+      'HEAD' ->
+        case Transport:send(Socket, Head) of
+          ok ->
+            {ok, Req#http_req{resp_state=done}};
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+            {ok, Req#http_req{resp_state=done}};
+          {error, _} = Error ->
+            Error
+        end;
 
--spec send_reply(pid(), iodata(), #http_req{}) -> ok.
-send_reply(_HttpServerPid, _Data, #http_req{method='HEAD'}) ->
-    ok;
-send_reply(HttpServerPid, Data, #http_req{resp_state=waiting}) ->
-    agilitycache_http_protocol_server:send_data(HttpServerPid, Data).
-
-
+      _ ->
+        case Transport:send(Socket, Head) of
+          ok ->
+            {ok, Req#http_req{resp_state=waiting}};
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+            {ok, Req#http_req{resp_state=done}};
+          {error, _} = Error ->
+            Error
+        end
+      end.
+                  
 %% @doc Initiate the sending of a chunked reply to the client.
 %% @see agilitycache_http_req:chunk/2
--spec start_chunked_reply(pid(), http_status(), http_headers(), #http_req{})
-			 -> {ok, #http_req{}}.
-start_chunked_reply(HttpServerPid, Code, Headers, Req=#http_req{method='HEAD', resp_state=waiting}) ->
+%%-spec start_chunked_reply(pid(), http_status(), http_headers(), #http_req{})
+%%			 -> {ok, #http_req{}}.
+start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{method='HEAD', resp_state=waiting}) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Date">>, cowboy_clock:rfc1123()},
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
-    agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
-    {ok, Req#http_req{resp_state=done}};
-start_chunked_reply(HttpServerPid, Code, Headers, Req=#http_req{resp_state=waiting}) ->
+    case Transport:send(Socket, Head) of
+          ok ->
+            {ok, Req#http_req{resp_state=done}};
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+            {ok, Req#http_req{resp_state=done}};
+          {error, _} = Error ->
+            Error
+        end;
+start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=waiting}) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Connection">>, <<"close">>},
 							       {<<"Transfer-Encoding">>, <<"chunked">>},
 							       {<<"Date">>, cowboy_clock:rfc1123()},
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
-    agilitycache_http_protocol_server:send_data(HttpServerPid, Head),
-    {ok, Req#http_req{resp_state=chunks}}.
+    case Transport:send(Socket, Head) of
+          ok ->
+            {ok, Req#http_req{resp_state=chunks}};
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+            {ok, Req#http_req{resp_state=done}};
+          {error, _} = Error ->
+            Error
+        end.
 
 %% @doc Send a chunk of data.
 %%
 %% A chunked reply must have been initiated before calling this function.
--spec send_chunk(pid(), iodata(), #http_req{}) -> ok.
-send_chunk(_HttpServerPid, _Data, #http_req{method='HEAD'}) ->
+%%-spec send_chunk(pid(), iodata(), #http_req{}) -> ok.
+send_chunk(_Transport, _Socket, _Data, #http_req{method='HEAD'}) ->
     ok;
-send_chunk(HttpServerPid, Data, #http_req{resp_state=chunks}) ->
-    agilitycache_http_protocol_server:send_data(HttpServerPid, 
-						[integer_to_list(iolist_size(Data), 16), <<"\r\n">>, Data, <<"\r\n">>]).
--spec stop_chunked_reply(pid(), #http_req{}) -> ok.
-stop_chunked_reply(HttpServerPid, #http_req{resp_state=chunks}) ->
-    agilitycache_http_protocol_server:send_data(HttpServerPid, <<"0\r\n\r\n">>).
+send_chunk(Transport, Socket, Data, #http_req{resp_state=chunks}) ->
+  case Transport:send(Socket, [integer_to_list(iolist_size(Data), 16), <<"\r\n">>, Data, <<"\r\n">>]) of
+          ok ->
+            ok;
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+            ok;
+          {error, _} = Error ->
+            Error
+        end.
+%%-spec stop_chunked_reply(pid(), #http_req{}) -> ok.
+stop_chunked_reply(Transport, Socket, #http_req{resp_state=chunks}) ->
+  case Transport:send(Socket, <<"0\r\n\r\n">>) of
+            ok ->
+              ok;
+            {error, closed} ->
+              %% @todo Eu devia alertar sobre isso, não?
+              ok;
+            {error, _} = Error ->
+              Error
+          end.
 
 %% Misc API.
 
