@@ -8,7 +8,7 @@
 
 -export([
 	 status/1, version/1, string/1,
-	 peer/2,
+	 peer/3,
 	 header/2, header/3, headers/1,
 	 cookie/2, cookie/3, cookies/1,
 	 content_length/1
