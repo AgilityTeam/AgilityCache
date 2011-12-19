@@ -32,7 +32,6 @@
       rep_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
 	  timeout = 5000 :: timeout(),
-	  remaining_bytes = undefined,
       server_buffer = <<>> :: binary(),
       client_buffer = <<>> :: binary()
 	 }).
@@ -53,6 +52,9 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, 5000),
 	HttpReq = proplists:get_value(http_req, Opts),
     cowboy:accept_ack(ListenerPid),
+    Transport:setopts(ServerSocket, [{buffer, 87380}]),
+    %%error_logger:info_msg("ServerSocket buffer ~p,~p,~p", 
+    %%  [inet:getopts(ServerSocket, [buffer]), inet:getopts(ServerSocket, [recbuf]), inet:getopts(ServerSocket, [sndbuf]) ]),
     start_handle_request(#state{http_req=HttpReq, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
     	listener=ListenerPid, server_socket=ServerSocket}).
 
@@ -95,7 +97,7 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPa
           State=#state{transport=Transport}) ->
       {Path, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
       ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
-      RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
+      RawHost2 = cowboy_bstr:to_lower(RawHost),
       DefaultPort = agilitycache_http_protocol_parser:default_port(Transport:name()),
       State2 = case {RawPort, agilitycache_dispatcher:split_host(RawHost2)} of
        {DefaultPort, {Host, RawHost3, _}} ->
@@ -174,7 +176,7 @@ wait_request_header(State=#state{server_socket=Socket, transport=Transport, time
 
 parse_request_header({http_header, _I, 'Host', _R, RawHost},
     State = #state{transport=Transport, http_req=Req=#http_req{host=undefined}}) ->
-    RawHost2 = agilitycache_http_protocol_parser:binary_to_lower(RawHost),
+    RawHost2 = cowboy_bstr:to_lower(RawHost),
     DefaultPort = agilitycache_http_protocol_parser:default_port(Transport:name()),
     State2 = case agilitycache_dispatcher:split_host(RawHost2) of
       {Host, RawHost3, DefaultPort} ->
@@ -232,13 +234,14 @@ start_request(State=#state{http_req = HttpReq, transport = Transport, timeout = 
   {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
   case Transport:connect(binary_to_list(RawHost), Port, [{buffer, 87380}], Timeout) of
     {ok, Socket} ->
-      ok = Transport:controlling_process(Socket, self()),
       start_send_request(State#state{http_req = HttpReq1, client_socket = Socket});
     {error, Reason} ->
       start_stop({error, Reason}, State)
   end.
 
 start_send_request(State = #state{client_socket=Socket, transport=Transport, http_req=HttpReq}) ->
+  %%error_logger:info_msg("ClientSocket buffer ~p,~p,~p", 
+  %%        [inet:getopts(Socket, [buffer]), inet:getopts(Socket, [recbuf]), inet:getopts(Socket, [sndbuf]) ]),
   Packet = agilitycache_http_req:request_head(HttpReq),
   case Transport:send(Socket, Packet) of
     ok ->
@@ -467,15 +470,24 @@ send_reply(Remaining, State = #state{server_socket=ServerSocket, transport=Trans
 
 start_stop(normal, State) ->
   do_stop(State);
-start_stop(Reason, State) ->
-  error_log:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
+start_stop(_Reason, State) ->
+  %%error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
   do_stop(State).
 
 do_stop(_State = #state{transport=Transport, server_socket=ServerSocket, client_socket=ClientSocket}) ->
   %%unexpected(start_stop, State),
-  Transport:close(ServerSocket),
-  Transport:close(ClientSocket).
-
+  case ServerSocket of
+    undefined ->
+      ok;
+    _ ->
+      Transport:close(ServerSocket)
+  end,
+  case ClientSocket of 
+    undefined ->
+      ok;
+    _ ->
+      Transport:close(ClientSocket)
+  end.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
