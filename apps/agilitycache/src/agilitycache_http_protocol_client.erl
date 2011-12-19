@@ -35,7 +35,6 @@
 	  http_rep :: #http_rep{},
 	  socket :: inet:socket(),
 	  transport :: module(),
-	  %%dispatch :: agilitycache_dispatcher:dispatch_rules(),
 	  req_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
 	  timeout :: timeout(),
@@ -96,7 +95,6 @@ start(Opts) ->
 %%--------------------------------------------------------------------
 -spec init(any()) -> {ok, atom(), #state{}}.
 init(Opts) ->
-    %%Dispatch = proplists:get_value(dispatch, Opts, []),
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
     Timeout = proplists:get_value(timeout, Opts, 5000),
     HttpReq = proplists:get_value(http_req, Opts),
@@ -122,7 +120,7 @@ init(Opts) ->
 start_connect(start_request, _From, State = #state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
-    case Transport:connect(binary_to_list(RawHost), Port, [], Timeout) of
+    case Transport:connect(binary_to_list(RawHost), Port, [{buffer, 87380}], Timeout) of
 	{ok, Socket} ->
 	    ok = Transport:controlling_process(Socket, self()),
 	    start_send(State#state{http_req = HttpReq1, socket = Socket});
@@ -215,7 +213,6 @@ parse_header({{http_header, _I, Field, _R, Value}, State=#state{http_rep=Rep}}) 
     start_parse_header(
       State#state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
 parse_header({http_eoh, State=#state{http_rep=Rep}}) ->
-    %%	dispatch(fun handler_init/2, Req#http_req{buffer=Buffer}, State#state{buffer= <<>>});
     %%	OK, esperar pedido do cliente.
     {reply, {ok, Rep}, idle_wait, State};
 parse_header({{http_error, _Bin}, State}) ->

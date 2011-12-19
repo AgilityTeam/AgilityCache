@@ -30,19 +30,8 @@ split_host(Host) ->
 %% @doc Split a path into a list of tokens.
 -spec split_path(binary()) -> {path_tokens(), binary(), binary()}.
 split_path(Path) ->
-    case binary:split(Path, <<"?">>) of
-	[Path] -> {do_split_path(Path, <<"/">>), Path, <<>>};
-	[<<>>, Qs] -> {[], <<>>, Qs};
-	[Path2, Qs] -> {do_split_path(Path2, <<"/">>), Path2, Qs}
-    end.
-
--spec do_split_path(binary(), <<_:8>>) -> path_tokens().
-do_split_path(RawPath, Separator) ->
-    EncodedPath = case binary:split(RawPath, Separator, [global, trim]) of
-		      [<<>>|Path] -> Path;
-		      Path -> Path
-		  end,
-    [quoted:from_url(Token) || Token <- EncodedPath].
+  URLDecode = fun(Bin) -> cowboy_http:urldecode(Bin, crash) end,
+  cowboy_dispatcher:split_path(Path, URLDecode).
 
 %% @doc Match hostname tokens and path tokens against dispatch rules.
 %%

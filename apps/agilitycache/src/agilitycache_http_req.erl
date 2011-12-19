@@ -50,7 +50,7 @@ peer(_HttpServerPid, Req) ->
     {Req#http_req.peer, Req}.
 
 %% @doc Return the tokens for the hostname requested.
--spec host(#http_req{}) -> {agilitycache_dispatcher:path_tokens(), #http_req{}}.
+-spec host(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
 host(Req) ->
     {Req#http_req.host, Req}.
 
@@ -65,7 +65,7 @@ port(Req) ->
     {Req#http_req.port, Req}.
 
 %% @doc Return the tokens for the path requested.
--spec path(#http_req{}) -> {agilitycache_dispatcher:path_tokens(), #http_req{}}.
+-spec path(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
 path(Req) ->
     {Req#http_req.path, Req}.
 
@@ -283,11 +283,8 @@ compact(Req) ->
 parse_qs(<<>>) ->
     [];
 parse_qs(Qs) ->
-    Tokens = binary:split(Qs, <<"&">>, [global, trim]),
-    [case binary:split(Token, <<"=">>) of
-	 [Token] -> {quoted:from_url(Token), true};
-	 [Name, Value] -> {quoted:from_url(Name), quoted:from_url(Value)}
-     end || Token <- Tokens].
+  {URLDecFun, URLDecArg} = {fun cowboy_http:urldecode/2, crash},
+  cowboy_http_req:parse_qs(Qs, fun(Bin) -> URLDecFun(Bin, URLDecArg) end).
 
 -spec request_head(#http_req{}) -> iolist().
 request_head(Req) ->

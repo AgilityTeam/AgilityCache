@@ -7,7 +7,7 @@
 
 %% gen_fsm callbacks
 -export([init/1,
-         start_handle_request/3,
+         start_handle_request/2,
          handle_event/3,
          handle_sync_event/4,
          handle_info/3,
@@ -24,11 +24,10 @@
 	  http_req :: #http_req{},
 	  http_rep :: #http_rep{},
 	  http_client :: pid(),
-	  http_client_ref :: any(),
 	  http_server :: pid(),
-	  http_server_ref :: any(),
 	  listener :: pid(),
-	  socket :: inet:socket(),
+	  server_socket :: inet:socket(),
+	  client_socket :: inet:socket(),
 	  transport :: module(),
 	  req_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
@@ -41,7 +40,7 @@
 %%%===================================================================
 
 start_handle_request(OwnPid) ->
-    gen_fsm:sync_send_event(OwnPid, start, infinity).
+    gen_fsm:send_event(OwnPid, start).
     
 stop(OwnPid) ->
     gen_fsm:send_all_state_event(OwnPid, stop).	 
@@ -87,21 +86,14 @@ init(Opts) ->
     HttpReq = proplists:get_value(http_req, Opts),
     Transport = proplists:get_value(transport, Opts),
     {ok, start_handle_request, #state{http_req=HttpReq, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-    listener=ListenerPid, socket=ServerSocket}}.
+    listener=ListenerPid, server_socket=ServerSocket}}.
 
-start_handle_request(start, _From, State) ->
+start_handle_request(start, State) ->
     read_request(State).
     
 read_request(State = #state{socket=Socket, transport=Transport,
 			    max_empty_lines=MaxEmptyLines, timeout=Timeout}) ->
     {ok, HttpServerPid} = 
-	agilitycache_http_protocol_server:start([
-						      {max_empty_lines, MaxEmptyLines}, 
-						      {timeout, Timeout},
-						      {transport, Transport},
-						      {socket, Socket}]),
-    Ref = erlang:monitor(process, HttpServerPid),
-    ok = Transport:controlling_process(Socket, HttpServerPid),						      
     {ok, Req} = agilitycache_http_protocol_server:receive_request(HttpServerPid),
     receive_reply(State#state{http_req=Req, http_server=HttpServerPid, http_server_ref=Ref}).
 
@@ -187,10 +179,10 @@ send_reply(State = #state{http_client = HttpClientPid, http_server = HttpServerP
       case Ended of
         true ->
           agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-          {stop, normal, State};
+          {stop, normal, State#state{remaining_bytes = NewRemaining}};
 				false ->
 					agilitycache_http_req:send_reply(HttpServerPid, Data, Req),
-					send_reply(State)
+					send_reply(State#state{remaining_bytes = NewRemaining})
 			end;
 		closed -> 
 			{stop, normal, State};

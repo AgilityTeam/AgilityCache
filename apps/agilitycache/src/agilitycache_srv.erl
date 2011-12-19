@@ -52,7 +52,7 @@ init([]) ->
   %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
   Ref = make_ref(),
   {ok, _} = cowboy:start_listener(Ref, 1000,
-    agilitycache_tcp_transport, [{port, 8080}, {max_connextions, 4096}],
+    agilitycache_tcp_transport, [{port, 8080}, {max_connextions, 4096}, {buffer, 87380}],
     agilitycache_http_protocol, [{dispatch, Dispatch}]
   ),
   {ok, #state{listener=Ref}}.

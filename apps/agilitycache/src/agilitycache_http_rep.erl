@@ -129,11 +129,8 @@ compact(Rep) ->
 parse_qs(<<>>) ->
     [];
 parse_qs(Qs) ->
-    Tokens = binary:split(Qs, <<"&">>, [global, trim]),
-    [case binary:split(Token, <<"=">>) of
-	 [Token] -> {quoted:from_url(Token), true};
-	 [Name, Value] -> {quoted:from_url(Name), quoted:from_url(Value)}
-     end || Token <- Tokens].
+  URLDecode = fun(Bin) -> cowboy_http:urldecode(Bin, crash) end,
+  cowboy_http_req:parse_qs(Qs, URLDecode).
 
 -spec response_head(http_status(), http_headers(), http_headers()) -> iolist().
 response_head(Status, Headers, DefaultHeaders) ->
