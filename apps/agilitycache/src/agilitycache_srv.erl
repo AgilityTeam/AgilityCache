@@ -29,7 +29,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-        gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -47,15 +47,15 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-  %% list({Handler, Opts})      
-  Dispatch = [{agilitycache_proxy_handler, []}],
-  %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
-  Ref = make_ref(),
-  {ok, _} = cowboy:start_listener(Ref, 1000,
-    agilitycache_tcp_transport, [{port, 8080}, {max_connections, 4096}, {buffer, 87380}],
-    agilitycache_http_protocol, [{dispatch, Dispatch}]
-  ),
-  {ok, #state{listener=Ref}}.
+    %% list({Handler, Opts})      
+    Dispatch = [{agilitycache_proxy_handler, []}],
+    %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
+    Ref = make_ref(),
+    {ok, _} = cowboy:start_listener(Ref, 1000,
+				    agilitycache_tcp_transport, [{port, 8080}, {max_connections, 4096}, {buffer, 87380}],
+				    agilitycache_http_protocol, [{dispatch, Dispatch}]
+				   ),
+    {ok, #state{listener=Ref}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -72,8 +72,8 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(_Request, _From, State) ->
-        Reply = ok,
-        {reply, Reply, State}.
+    Reply = ok,
+    {reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -86,7 +86,7 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(_Msg, State) ->
-        {noreply, State}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -99,7 +99,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(_Info, State) ->
-        {noreply, State}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -113,7 +113,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{listener=Listener}) ->
-        cowboy:stop_listener(Listener).
+    cowboy:stop_listener(Listener).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -124,7 +124,7 @@ terminate(_Reason, #state{listener=Listener}) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions

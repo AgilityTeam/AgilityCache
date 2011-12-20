@@ -128,8 +128,8 @@ compact(Rep) ->
 parse_qs(<<>>) ->
     [];
 parse_qs(Qs) ->
-  URLDecode = fun(Bin) -> cowboy_http:urldecode(Bin, crash) end,
-  cowboy_http_req:parse_qs(Qs, URLDecode).
+    URLDecode = fun(Bin) -> cowboy_http:urldecode(Bin, crash) end,
+    cowboy_http_req:parse_qs(Qs, URLDecode).
 
 -spec response_head(http_status(), http_headers(), http_headers()) -> iolist().
 response_head(Status, Headers, DefaultHeaders) ->

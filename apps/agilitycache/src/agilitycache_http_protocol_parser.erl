@@ -23,8 +23,8 @@ connection_to_atom(<<"close">>) ->
     close;
 connection_to_atom(Connection) ->
     case cowboy_bstr:to_lower(Connection) of
-       <<"close">> -> close;
-       _Any -> keepalive
+	<<"close">> -> close;
+	_Any -> keepalive
     end.
 
 -spec atom_to_connection(keepalive) -> <<_:80>>;
@@ -42,23 +42,23 @@ default_port(_) -> 80.
 %%       this configurable or something.
 -spec format_header(atom()) -> atom(); (binary()) -> binary().
 format_header(Field) when is_atom(Field) ->
-  Field;
+    Field;
 format_header(Field) when byte_size(Field) =< 20; byte_size(Field) > 32 ->
-  Field;
+    Field;
 format_header(Field) ->
-  format_header(Field, true, <<>>).
+    format_header(Field, true, <<>>).
 
 -spec format_header(binary(), boolean(), binary()) -> binary().
 format_header(<<>>, _Any, Acc) ->
-  Acc;
+    Acc;
 %% Replicate a bug in OTP for compatibility reasons when there's a - right
 %% after another. Proper use should always be 'true' instead of 'not Bool'.
 format_header(<< $-, Rest/bits >>, Bool, Acc) ->
-  format_header(Rest, not Bool, << Acc/binary, $- >>);
+    format_header(Rest, not Bool, << Acc/binary, $- >>);
 format_header(<< C, Rest/bits >>, true, Acc) ->
-  format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_upper(C)) >>);
+    format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_upper(C)) >>);
 format_header(<< C, Rest/bits >>, false, Acc) ->
-  format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_lower(C)) >>).
+    format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_lower(C)) >>).
 
 -spec status(http_status()) -> binary().
 status(100) -> <<"100 Continue">>;

@@ -184,27 +184,27 @@ reply(Transport, Socket, Code, Headers, Body, Req=#http_req{connection=Connectio
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
     case Method of
-      'HEAD' -> 
-      case Transport:send(Socket, Head) of
-            ok ->
-              {ok, Req#http_req{resp_state=done}};
-            {error, closed} ->
-              %% @todo Eu devia alertar sobre isso, não?
-             {ok, Req#http_req{resp_state=done}};
-            {error, _} = Error ->
-              Error
-          end;
+	'HEAD' -> 
+	    case Transport:send(Socket, Head) of
+		ok ->
+		    {ok, Req#http_req{resp_state=done}};
+		{error, closed} ->
+		    %% @todo Eu devia alertar sobre isso, não?
+		    {ok, Req#http_req{resp_state=done}};
+		{error, _} = Error ->
+		    Error
+	    end;
 
-    _ ->
-      case Transport:send(Socket, [Head, Body]) of
-        ok ->
-          {ok, Req#http_req{resp_state=done}};
-        {error, closed} ->
-          %% @todo Eu devia alertar sobre isso, não?
-          {ok, Req#http_req{resp_state=done}};
-        {error, _} = Error ->
-          Error
-      end
+	_ ->
+	    case Transport:send(Socket, [Head, Body]) of
+		ok ->
+		    {ok, Req#http_req{resp_state=done}};
+		{error, closed} ->
+		    %% @todo Eu devia alertar sobre isso, não?
+		    {ok, Req#http_req{resp_state=done}};
+		{error, _} = Error ->
+		    Error
+	    end
     end.
 
 %% @doc Send a reply to the client.
@@ -220,27 +220,27 @@ start_reply(Transport, Socket, Code, Headers, undefined, Req=#http_req{connectio
 							      ]),
     case Method of
         'HEAD' ->
-        case Transport:send(Socket, Head) of
-              ok ->
-                {ok, Req#http_req{resp_state=done}};
-              {error, closed} ->
-                %% @todo Eu devia alertar sobre isso, não?
-               {ok, Req#http_req{resp_state=done}};
-              {error, _} = Error ->
-                Error
+	    case Transport:send(Socket, Head) of
+		ok ->
+		    {ok, Req#http_req{resp_state=done}};
+		{error, closed} ->
+		    %% @todo Eu devia alertar sobre isso, não?
+		    {ok, Req#http_req{resp_state=done}};
+		{error, _} = Error ->
+		    Error
             end;
-  
-      _ ->
-        case Transport:send(Socket, Head) of
-          ok ->
-            {ok, Req#http_req{resp_state=waiting}};
-          {error, closed} ->
-            %% @todo Eu devia alertar sobre isso, não?
-            {ok, Req#http_req{resp_state=done}};
-          {error, _} = Error ->
-            Error
-        end
-      end;
+
+	_ ->
+	    case Transport:send(Socket, Head) of
+		ok ->
+		    {ok, Req#http_req{resp_state=waiting}};
+		{error, closed} ->
+		    %% @todo Eu devia alertar sobre isso, não?
+		    {ok, Req#http_req{resp_state=done}};
+		{error, _} = Error ->
+		    Error
+	    end
+    end;
 start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) when is_binary(Length) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
@@ -249,29 +249,29 @@ start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=C
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
     case Method of
-      'HEAD' ->
-        case Transport:send(Socket, Head) of
-          ok ->
-            {ok, Req#http_req{resp_state=done}};
-          {error, closed} ->
-            %% @todo Eu devia alertar sobre isso, não?
-            {ok, Req#http_req{resp_state=done}};
-          {error, _} = Error ->
-            Error
-        end;
+	'HEAD' ->
+	    case Transport:send(Socket, Head) of
+		ok ->
+		    {ok, Req#http_req{resp_state=done}};
+		{error, closed} ->
+		    %% @todo Eu devia alertar sobre isso, não?
+		    {ok, Req#http_req{resp_state=done}};
+		{error, _} = Error ->
+		    Error
+	    end;
 
-      _ ->
-        case Transport:send(Socket, Head) of
-          ok ->
-            {ok, Req#http_req{resp_state=waiting}};
-          {error, closed} ->
-            %% @todo Eu devia alertar sobre isso, não?
-            {ok, Req#http_req{resp_state=done}};
-          {error, _} = Error ->
-            Error
-        end
-      end.
-                  
+	_ ->
+	    case Transport:send(Socket, Head) of
+		ok ->
+		    {ok, Req#http_req{resp_state=waiting}};
+		{error, closed} ->
+		    %% @todo Eu devia alertar sobre isso, não?
+		    {ok, Req#http_req{resp_state=done}};
+		{error, _} = Error ->
+		    Error
+	    end
+    end.
+
 %% @doc Initiate the sending of a chunked reply to the client.
 %% @see agilitycache_http_req:chunk/2
 %%-spec start_chunked_reply(pid(), http_status(), http_headers(), #http_req{})
@@ -282,14 +282,14 @@ start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{method='HEAD
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
     case Transport:send(Socket, Head) of
-          ok ->
+	ok ->
             {ok, Req#http_req{resp_state=done}};
-          {error, closed} ->
+	{error, closed} ->
             %% @todo Eu devia alertar sobre isso, não?
             {ok, Req#http_req{resp_state=done}};
-          {error, _} = Error ->
+	{error, _} = Error ->
             Error
-        end;
+    end;
 start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=waiting}) ->
     Head = agilitycache_http_rep:response_head(Code, Headers, [
 							       {<<"Connection">>, <<"close">>},
@@ -298,14 +298,14 @@ start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=w
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
     case Transport:send(Socket, Head) of
-          ok ->
+	ok ->
             {ok, Req#http_req{resp_state=chunks}};
-          {error, closed} ->
+	{error, closed} ->
             %% @todo Eu devia alertar sobre isso, não?
             {ok, Req#http_req{resp_state=done}};
-          {error, _} = Error ->
+	{error, _} = Error ->
             Error
-        end.
+    end.
 
 %% @doc Send a chunk of data.
 %%
@@ -314,26 +314,26 @@ start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=w
 send_chunk(_Transport, _Socket, _Data, #http_req{method='HEAD'}) ->
     ok;
 send_chunk(Transport, Socket, Data, #http_req{resp_state=chunks}) ->
-  case Transport:send(Socket, [integer_to_list(iolist_size(Data), 16), <<"\r\n">>, Data, <<"\r\n">>]) of
-          ok ->
+    case Transport:send(Socket, [integer_to_list(iolist_size(Data), 16), <<"\r\n">>, Data, <<"\r\n">>]) of
+	ok ->
             ok;
-          {error, closed} ->
+	{error, closed} ->
             %% @todo Eu devia alertar sobre isso, não?
             ok;
-          {error, _} = Error ->
+	{error, _} = Error ->
             Error
-        end.
+    end.
 %%-spec stop_chunked_reply(pid(), #http_req{}) -> ok.
 stop_chunked_reply(Transport, Socket, #http_req{resp_state=chunks}) ->
-  case Transport:send(Socket, <<"0\r\n\r\n">>) of
-            ok ->
-              ok;
-            {error, closed} ->
-              %% @todo Eu devia alertar sobre isso, não?
-              ok;
-            {error, _} = Error ->
-              Error
-          end.
+    case Transport:send(Socket, <<"0\r\n\r\n">>) of
+	ok ->
+	    ok;
+	{error, closed} ->
+	    %% @todo Eu devia alertar sobre isso, não?
+	    ok;
+	{error, _} = Error ->
+	    Error
+    end.
 
 %% Misc API.
 
@@ -354,8 +354,8 @@ compact(Req) ->
 parse_qs(<<>>) ->
     [];
 parse_qs(Qs) ->
-  {URLDecFun, URLDecArg} = {fun cowboy_http:urldecode/2, crash},
-  cowboy_http_req:parse_qs(Qs, fun(Bin) -> URLDecFun(Bin, URLDecArg) end).
+    {URLDecFun, URLDecArg} = {fun cowboy_http:urldecode/2, crash},
+    cowboy_http_req:parse_qs(Qs, fun(Bin) -> URLDecFun(Bin, URLDecArg) end).
 
 -spec request_head(#http_req{}) -> iolist().
 request_head(Req) ->

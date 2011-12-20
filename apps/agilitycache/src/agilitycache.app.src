@@ -10,29 +10,29 @@
   {mod, { agilitycache_app, []}},
   {env, [
 	 {cache_dirs, [
-		              [ 
-                    {limit, 70}, %% Em porcentagem
-                    {max_filesize, <<"500MiB">>},
-                    {min_filesize, <<"1kiB">>},
-                    {path, <<"/home/agilitycache/var/cache">>}
-                  ]
-                 ]},
-    {plugins, [
-                 %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
-                 agilitycache_plugin_orkut%%,
-                 %%agilitycache_plugin_youtube_video,
-                 %%agilitycache_plugin_windows_update,
-                 %%agilitycache_plugin_file_hosters,
-                 %%agilitycache_plugin_erroneous_sites,
-                 %%agilitycache_plugin_static_file
-               ]      
-    },
-    {listen, [{port, 8080}, {backlog, 4096}]},
-    %%{keep_alive_timeout, 5},
-    %%{tcp_timeout, 5},
-    {dscp, [{hit, 12}]},
-    {database, [
-        [{path, <<"/home/agilitycache/var/database">>}]
-      ]}
- ]}
-]}.
+		       [ 
+			 {limit, 70}, %% Em porcentagem
+			 {max_filesize, <<"500MiB">>},
+			 {min_filesize, <<"1kiB">>},
+			 {path, <<"/home/agilitycache/var/cache">>}
+		       ]
+		      ]},
+	 {plugins, [
+		    %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
+		    agilitycache_plugin_orkut%%,
+		    %%agilitycache_plugin_youtube_video,
+		    %%agilitycache_plugin_windows_update,
+		    %%agilitycache_plugin_file_hosters,
+		    %%agilitycache_plugin_erroneous_sites,
+		    %%agilitycache_plugin_static_file
+		   ]      
+	 },
+	 {listen, [{port, 8080}, {backlog, 4096}]},
+	 %%{keep_alive_timeout, 5},
+	 %%{tcp_timeout, 5},
+	 {dscp, [{hit, 12}]},
+	 {database, [
+		     [{path, <<"/home/agilitycache/var/database">>}]
+		    ]}
+	]}
+ ]}.
