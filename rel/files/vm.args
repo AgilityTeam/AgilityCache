@@ -13,6 +13,9 @@
 +K true
 +A 5
 
+## Disable SMP
+#-smp disable
+
 ## Max process
 +P 512000
 
@@ -22,6 +25,10 @@
 ## Tweak GC to run more often
 #-env ERL_FULLSWEEP_AFTER 10
 
-# Reduce GC
+## Reduce GC
 -env ERL_FULLSWEEP_AFTER 0
+
+## Enable hybrid heap
+# Não funcionando no momento, VM bugada
+#-hybrid
 

@@ -52,9 +52,21 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, 5000),
     HttpReq = proplists:get_value(http_req, Opts),
     cowboy:accept_ack(ListenerPid),
-    Transport:setopts(ServerSocket, [{buffer, 87380}]),
-    %%error_logger:info_msg("ServerSocket buffer ~p,~p,~p", 
-    %%  [inet:getopts(ServerSocket, [buffer]), inet:getopts(ServerSocket, [recbuf]), inet:getopts(ServerSocket, [sndbuf]) ]),
+    %%BufferSize = case application:get_env(agilitycache, buffer_size) of
+    %%  undefined ->
+    %%    87380;
+    %%  {ok, Size} ->
+    %%    Size
+    %%end,
+    %%Transport:setopts(ServerSocket, [{buffer, BufferSize}]),
+    %%Transport:setopts(ServerSocket, [{nodelay, true}]),
+    Transport:setopts(ServerSocket, [
+				     {nodelay, true}, %% We want to be informed even when packages are small
+				     {send_timeout, 32000}, %% If we couldn't send a message in 32 secs. something is definitively wrong...
+				     {send_timeout_close, true} %%... and therefore the connection should be closed
+				    ]),
+    %%error_logger:info_msg("ServerSocket buffer ~p", 
+    %%  [inet:getopts(ServerSocket, [delay_send])]),
     start_handle_request(#state{http_req=HttpReq, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
 				listener=ListenerPid, server_socket=ServerSocket}).
 
@@ -232,7 +244,18 @@ read_reply(State) ->
 start_request(State=#state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
-    case Transport:connect(binary_to_list(RawHost), Port, [{buffer, 87380}], Timeout) of
+    %%BufferSize = case application:get_env(agilitycache, buffer_size) of
+    %%  undefined ->
+    %%    87380;
+    %%  {ok, Size} ->
+    %%    Size
+    %%end,
+    TransOpts = [
+		 {nodelay, true}, %% We want to be informed even when packages are small
+		 {send_timeout, 32000}, %% If we couldn't send a message in 32 secs. something is definitively wrong...
+		 {send_timeout_close, true} %%... and therefore the connection should be closed
+		],
+    case Transport:connect(binary_to_list(RawHost), Port, TransOpts, Timeout) of
 	{ok, Socket} ->
 	    start_send_request(State#state{http_req = HttpReq1, client_socket = Socket});
 	{error, Reason} ->
