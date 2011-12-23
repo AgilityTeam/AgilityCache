@@ -33,7 +33,7 @@
 		     | 'Expires' | 'Last-Modified' | 'Accept-Ranges' | 'Set-Cookie'
 		     | 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive'
 		     | 'Proxy-Connection' | binary().
--type http_headers() :: list({http_header(), binary()}).
+-type http_headers() :: list({http_header(), iodata()}).
 -type http_cookies() :: list({binary(), binary()}).
 -type http_status() :: non_neg_integer() | binary().
 -type http_string() :: binary().
@@ -43,12 +43,12 @@
 	  method     = 'GET'     :: http_method(),
 	  version    = {1, 1}    :: http_version(),
 	  peer       = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
-	  host       = undefined :: undefined | cowboy_dispatcher:path_tokens(),
-	  host_info  = undefined :: undefined | cowboy_dispatcher:path_tokens(),
+	  host       = undefined :: undefined | cowboy_dispatcher:tokens(),
+	  host_info  = undefined :: undefined | cowboy_dispatcher:tokens(),
 	  raw_host   = undefined :: undefined | binary(),
 	  port       = undefined :: undefined | inet:ip_port(),
-	  path       = undefined :: undefined | '*' | cowboy_dispatcher:path_tokens(),
-	  path_info  = undefined :: undefined | cowboy_dispatcher:path_tokens(),
+	  path       = undefined :: undefined | '*' | cowboy_dispatcher:tokens(),
+	  path_info  = undefined :: undefined | cowboy_dispatcher:tokens(),
 	  raw_path   = undefined :: undefined | binary(),
 	  qs_vals    = undefined :: undefined | list({binary(), binary() | true}),
 	  raw_qs     = undefined :: undefined | binary(),
@@ -69,7 +69,7 @@
 	  %% Request.
 	  status     = 200       :: http_status(),
 	  version    = {1, 1}    :: http_version(),
-	  string       = <<>>       :: http_string(),
+	  string     = <<>>      :: http_string(),
 	  peer       = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
 	  headers    = []        :: http_headers(),
 	  cookies    = undefined :: undefined | http_cookies(),

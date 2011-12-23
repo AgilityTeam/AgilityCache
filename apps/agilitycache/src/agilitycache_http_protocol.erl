@@ -235,9 +235,9 @@ parse_request_header({http_error, _Bin}, State) ->
 read_reply(State) ->
     start_request(State).
 
-start_request(State=#state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
-    {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
-    {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
+start_request(State=#state{http_req = HttpReq, transport = Transport, client_socket=ClientSocket, timeout = Timeout}) ->
+    {RawHost, HttpReq0} = agilitycache_http_req:raw_host(Transport, ClientSocket, HttpReq),
+    {Port, HttpReq1} = agilitycache_http_req:port(Transport, ClientSocket, HttpReq0),
     BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
     TransOpts = [
       %{nodelay, true}%, %% We want to be informed even when packages are small
@@ -271,8 +271,8 @@ receive_reply(State = #state{http_req = #http_req{method = Method}}) ->
 	    start_receive_reply(State)
     end.
 
-start_send_post(State = #state{http_req=Req}) ->
-    {Length, Req2} = agilitycache_http_req:content_length(Req),
+start_send_post(State = #state{http_req=Req, transport=Transport, client_socket=Socket}) ->
+    {Length, Req2} = agilitycache_http_req:content_length(Transport, Socket, Req),
     case Length of
 	undefined ->
 	    start_stop({error, <<"POST without length">>}, State#state{http_req=Req2});

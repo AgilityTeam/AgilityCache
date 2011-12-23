@@ -7,13 +7,13 @@
 -module(agilitycache_http_req).
 
 -export([
-	 method/1, version/1, peer/3,
-	 host/1, raw_host/1, port/1,
-	 path/1, raw_path/1,
-	 qs_val/2, qs_val/3, qs_vals/1, raw_qs/1,
-	 header/2, header/3, headers/1,
-	 cookie/2, cookie/3, cookies/1,
-	 content_length/1
+	 method/3, version/3, peer/3,
+	 host/3, raw_host/3, port/3,
+	 path/3, raw_path/3,
+	 qs_val/4, qs_val/5, qs_vals/3, raw_qs/3,
+	 header/4, header/5, headers/3,
+	 cookie/4, cookie/5, cookies/3,
+	 content_length/3
 	]). %% Request API.
 
 -export([
@@ -31,143 +31,98 @@
 %% Request API.
 
 %% @doc Return the HTTP method of the request.
--spec method(#http_req{}) -> {http_method(), #http_req{}}.
-method(Req) ->
-    {Req#http_req.method, Req}.
+-spec method(module(), inet:socket(), #http_req{}) -> {http_method(), #http_req{}}.
+method(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:method(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the HTTP version used for the request.
--spec version(#http_req{}) -> {http_version(), #http_req{}}.
-version(Req) ->
-    {Req#http_req.version, Req}.
+-spec version(module(), inet:socket(), #http_req{}) -> {http_version(), #http_req{}}.
+version(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:version(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the peer address and port number of the remote host.
 %%-spec peer(pid(), #http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
-peer(Transport, Socket, Req=#http_req{peer=undefined}) ->
-    {ok, Peer} = Transport:peername(Socket),
-    {Peer, Req#http_req{peer=Peer}};
-peer(_Transport, _Socket, Req) ->
-    {Req#http_req.peer, Req}.
+peer(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:peer(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the tokens for the hostname requested.
--spec host(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
-host(Req) ->
-    {Req#http_req.host, Req}.
+%%-spec host(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
+host(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:host(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the raw host directly taken from the request.
--spec raw_host(#http_req{}) -> {binary(), #http_req{}}.
-raw_host(Req) ->
-    {Req#http_req.raw_host, Req}.
+%%-spec raw_host(#http_req{}) -> {binary(), #http_req{}}.
+raw_host(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:raw_host(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the port used for this request.
--spec port(#http_req{}) -> {inet:ip_port(), #http_req{}}.
-port(Req) ->
-    {Req#http_req.port, Req}.
+%%-spec port(#http_req{}) -> {inet:ip_port(), #http_req{}}.
+port(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:port(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the tokens for the path requested.
--spec path(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
-path(Req) ->
-    {Req#http_req.path, Req}.
+%%-spec path(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
+path(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:path(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Return the raw path directly taken from the request.
--spec raw_path(#http_req{}) -> {binary(), #http_req{}}.
-raw_path(Req) ->
-    {Req#http_req.raw_path, Req}.
+%%-spec raw_path(#http_req{}) -> {binary(), #http_req{}}.
+raw_path(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:raw_path(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @equiv qs_val(Name, Req, undefined)
--spec qs_val(binary(), #http_req{})
-	    -> {binary() | true | undefined, #http_req{}}.
-qs_val(Name, Req) when is_binary(Name) ->
-    qs_val(Name, Req, undefined).
+qs_val(Name, Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:qs_val(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @doc Return the query string value for the given key, or a default if
-%% missing.
--spec qs_val(binary(), #http_req{}, Default)
-	    -> {binary() | true | Default, #http_req{}} when Default::any().
-qs_val(Name, Req=#http_req{raw_qs=RawQs, qs_vals=undefined}, Default)
-  when is_binary(Name) ->
-    QsVals = parse_qs(RawQs),
-    qs_val(Name, Req#http_req{qs_vals=QsVals}, Default);
-qs_val(Name, Req, Default) ->
-    case lists:keyfind(Name, 1, Req#http_req.qs_vals) of
-	{Name, Value} -> {Value, Req};
-	false -> {Default, Req}
-    end.
+qs_val(Name, Transport, Socket, Req, Default) ->
+    {Result, CowboyReq} = cowboy_http_req:qs_val(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req), Default),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+    
+qs_vals(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:qs_vals(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+    
+raw_qs(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:raw_qs(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @doc Return the full list of query string values.
--spec qs_vals(#http_req{}) -> {list({binary(), binary() | true}), #http_req{}}.
-qs_vals(Req=#http_req{raw_qs=RawQs, qs_vals=undefined}) ->
-    QsVals = parse_qs(RawQs),
-    qs_vals(Req#http_req{qs_vals=QsVals});
-qs_vals(Req=#http_req{qs_vals=QsVals}) ->
-    {QsVals, Req}.
+header(Name, Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:header(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @doc Return the raw query string directly taken from the request.
--spec raw_qs(#http_req{}) -> {binary(), #http_req{}}.
-raw_qs(Req) ->
-    {Req#http_req.raw_qs, Req}.
+header(Name, Transport, Socket, Req, Default) ->
+    {Result, CowboyReq} = cowboy_http_req:header(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req), Default),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @equiv header(Name, Req, undefined)
--spec header(atom() | binary(), #http_req{})
-	    -> {binary() | undefined, #http_req{}}.
-header(Name, Req) when is_atom(Name) orelse is_binary(Name) ->
-    header(Name, Req, undefined).
+headers(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:headers(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @doc Return the header value for the given key, or a default if missing.
--spec header(atom() | binary(), #http_req{}, Default)
-	    -> {binary() | Default, #http_req{}} when Default::any().
-header(Name, Req, Default) when is_atom(Name) orelse is_binary(Name) ->
-    case lists:keyfind(Name, 1, Req#http_req.headers) of
-	{Name, Value} -> {Value, Req};
-	false -> {Default, Req}
-    end.
+cookie(Name, Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:cookie(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @doc Return the full list of headers.
--spec headers(#http_req{}) -> {http_headers(), #http_req{}}.
-headers(Req) ->
-    {Req#http_req.headers, Req}.
+cookie(Name, Transport, Socket, Req, Default) ->
+    {Result, CowboyReq} = cowboy_http_req:cookie(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req), Default),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
-%% @equiv cookie(Name, Req, undefined)
--spec cookie(binary(), #http_req{})
-	    -> {binary() | true | undefined, #http_req{}}.
-cookie(Name, Req) when is_binary(Name) ->
-    cookie(Name, Req, undefined).
-
-%% @doc Return the cookie value for the given key, or a default if
-%% missing.
--spec cookie(binary(), #http_req{}, Default)
-	    -> {binary() | true | Default, #http_req{}} when Default::any().
-cookie(Name, Req=#http_req{cookies=undefined}, Default) when is_binary(Name) ->
-    case header('Cookie', Req) of
-	{undefined, Req2} ->
-	    {Default, Req2#http_req{cookies=[]}};
-	{RawCookie, Req2} ->
-	    Cookies = cowboy_cookies:parse_cookie(RawCookie),
-	    cookie(Name, Req2#http_req{cookies=Cookies}, Default)
-    end;
-cookie(Name, Req, Default) ->
-    case lists:keyfind(Name, 1, Req#http_req.cookies) of
-	{Name, Value} -> {Value, Req};
-	false -> {Default, Req}
-    end.
-
-%% @doc Return the full list of cookie values.
--spec cookies(#http_req{}) -> {list({binary(), binary() | true}), #http_req{}}.
-cookies(Req=#http_req{cookies=undefined}) ->
-    case header('Cookie', Req) of
-	{undefined, Req2} ->
-	    {[], Req2#http_req{cookies=[]}};
-	{RawCookie, Req2} ->
-	    Cookies = cowboy_cookies:parse_cookie(RawCookie),
-	    cookies(Req2#http_req{cookies=Cookies})
-    end;
-cookies(Req=#http_req{cookies=Cookies}) ->
-    {Cookies, Req}.
-
--spec content_length(#http_req{}) -> {binary() | integer(), #http_req{}}.
-content_length(Req=#http_req{content_length=undefined}) ->
-    {Length, Req} = header('Content-Length', Req),
+cookies(Transport, Socket, Req) ->
+    {Result, CowboyReq} = cowboy_http_req:cookies(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+    
+-spec content_length(module(), inet:socket(), #http_req{}) -> {binary() | integer(), #http_req{}}.
+content_length(Transport, Socket, Req=#http_req{content_length=undefined}) ->
+    {Length, Req} = header('Content-Length', Transport, Socket, Req),
     {Length, Req#http_req{content_length=Length}};
-content_length(Req) ->
+content_length(_Transport, _Socket, Req) ->
     {Req#http_req.content_length, Req}.
 
 %% Response API.
@@ -350,12 +305,6 @@ compact(Req) ->
 
 %% Internal.
 
--spec parse_qs(binary()) -> list({binary(), binary() | true}).
-parse_qs(<<>>) ->
-    [];
-parse_qs(Qs) ->
-    {URLDecFun, URLDecArg} = {fun cowboy_http:urldecode/2, crash},
-    cowboy_http_req:parse_qs(Qs, fun(Bin) -> URLDecFun(Bin, URLDecArg) end).
 
 -spec request_head(#http_req{}) -> iolist().
 request_head(Req) ->
@@ -376,23 +325,3 @@ request_head(Req) ->
     Headers = [<< Key/binary, ": ", Value/binary, "\r\n" >> || {Key, Value} <- Headers2],
     [RequestLine, Headers, <<"\r\n">>].
 
-%% Tests.
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-parse_qs_test_() ->
-    %% {Qs, Result}
-    Tests = [
-	     {<<"">>, []},
-	     {<<"a=b">>, [{<<"a">>, <<"b">>}]},
-	     {<<"aaa=bbb">>, [{<<"aaa">>, <<"bbb">>}]},
-	     {<<"a&b">>, [{<<"a">>, true}, {<<"b">>, true}]},
-	     {<<"a=b&c&d=e">>, [{<<"a">>, <<"b">>},
-				{<<"c">>, true}, {<<"d">>, <<"e">>}]},
-	     {<<"a=b=c=d=e&f=g">>, [{<<"a">>, <<"b=c=d=e">>}, {<<"f">>, <<"g">>}]},
-	     {<<"a+b=c+d">>, [{<<"a b">>, <<"c d">>}]}
-	    ],
-    [{Qs, fun() -> R = parse_qs(Qs) end} || {Qs, R} <- Tests].
-
--endif.
