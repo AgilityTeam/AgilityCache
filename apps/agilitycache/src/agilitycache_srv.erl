@@ -51,13 +51,9 @@ init([]) ->
     Dispatch = [{agilitycache_proxy_handler, []}],
     %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
     Ref = make_ref(),
-    {ok, ListenOpts} = application:get_env(agilitycache, listen),
-    %%BufferSize = case application:get_env(agilitycache, buffer_size) of
-    %%  undefined ->
-    %%    87380;
-    %%  {ok, Size} ->
-    %%    Size
-    %%end,
+    ListenOpts = agilitycache_utils:get_app_env(agilitycache, listen, []),
+    BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
+    Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
     %%error_logger:info_msg("ListenOpts ~p~n", [ListenOpts]),
     TransOpts = [
 		 {port, proplists:get_value(port, ListenOpts, 8080)}, 
@@ -65,9 +61,9 @@ init([]) ->
 		 {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
 		 {reuseaddr, true},
 		 {nodelay, true}, %% We want to be informed even when packages are small
-		 {send_timeout, 32000}, %% If we couldn't send a message in 32 secs. something is definitively wrong...
-		 {send_timeout_close, true} %%... and therefore the connection should be closed
-		 %%{buffer, BufferSize}],
+		 {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time, something is definitively wrong...
+		 {send_timeout_close, true}, %%... and therefore the connection should be closed
+		 {buffer, BufferSize}
 		],
     %%error_logger:info_msg("TransOpts~p~n", [TransOpts]),
     NbAcceptors = proplists:get_value(acceptors, ListenOpts),

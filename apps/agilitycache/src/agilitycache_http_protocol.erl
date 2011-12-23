@@ -49,21 +49,15 @@ start_link(ListenerPid, Socket, Transport, Opts) ->
 -spec init(pid(), inet:socket(), module(), any()) -> ok.
 init(ListenerPid, ServerSocket, Transport, Opts) ->
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
-    Timeout = proplists:get_value(timeout, Opts, 5000),
+    Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
     HttpReq = proplists:get_value(http_req, Opts),
     cowboy:accept_ack(ListenerPid),
-    %%BufferSize = case application:get_env(agilitycache, buffer_size) of
-    %%  undefined ->
-    %%    87380;
-    %%  {ok, Size} ->
-    %%    Size
-    %%end,
-    %%Transport:setopts(ServerSocket, [{buffer, BufferSize}]),
-    %%Transport:setopts(ServerSocket, [{nodelay, true}]),
+    BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
     Transport:setopts(ServerSocket, [
-				     {nodelay, true}, %% We want to be informed even when packages are small
-				     {send_timeout, 32000}, %% If we couldn't send a message in 32 secs. something is definitively wrong...
-				     {send_timeout_close, true} %%... and therefore the connection should be closed
+				     %{nodelay, true}%, %% We want to be informed even when packages are small             
+				     {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
+				     {send_timeout_close, true}, %%... and therefore the connection should be closed
+             {buffer, BufferSize}
 				    ]),
     %%error_logger:info_msg("ServerSocket buffer ~p", 
     %%  [inet:getopts(ServerSocket, [delay_send])]),
@@ -80,8 +74,7 @@ wait_request(State=#state{server_socket=Socket, transport=Transport,
 			  timeout=T, server_buffer=Buffer}) ->
     case Transport:recv(Socket, 0, T) of
 	{ok, Data} ->
-	    State2 = State#state{server_buffer = << Buffer/binary, Data/binary>>},
-	    start_parse_request(State2);
+      start_parse_request(State#state{server_buffer = << Buffer/binary, Data/binary>>});
 	{error, timeout} ->
 	    start_stop({http_error, 408}, State);
 	{error, closed} ->
@@ -244,16 +237,12 @@ read_reply(State) ->
 start_request(State=#state{http_req = HttpReq, transport = Transport, timeout = Timeout}) ->
     {RawHost, HttpReq0} = agilitycache_http_req:raw_host(HttpReq),
     {Port, HttpReq1} = agilitycache_http_req:port(HttpReq0),
-    %%BufferSize = case application:get_env(agilitycache, buffer_size) of
-    %%  undefined ->
-    %%    87380;
-    %%  {ok, Size} ->
-    %%    Size
-    %%end,
+    BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
     TransOpts = [
-		 {nodelay, true}, %% We want to be informed even when packages are small
-		 {send_timeout, 32000}, %% If we couldn't send a message in 32 secs. something is definitively wrong...
-		 {send_timeout_close, true} %%... and therefore the connection should be closed
+      %{nodelay, true}%, %% We want to be informed even when packages are small
+      {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
+      {send_timeout_close, true}, %%... and therefore the connection should be closed
+      {buffer, BufferSize}
 		],
     case Transport:connect(binary_to_list(RawHost), Port, TransOpts, Timeout) of
 	{ok, Socket} ->
@@ -296,14 +285,14 @@ start_send_post(State = #state{http_req=Req}) ->
 get_server_body(State=#state{
 		  server_socket=Socket, transport=Transport, timeout=T, server_buffer= <<>>})->
     case Transport:recv(Socket, 0, T) of
-        {ok, Data} ->
-	    {ok, Data, State};
-        {error, timeout} ->
-	    timeout;
-        {error, closed} ->
-	    closed;
-        Other ->
-	    Other
+      {ok, Data} ->
+        {ok, Data, State};
+      {error, timeout} ->
+        timeout;
+      {error, closed} ->
+        closed;
+      Other ->
+        Other
     end;
 %% Non empty buffer
 get_server_body(State=#state{server_buffer=Buffer})->
@@ -313,14 +302,14 @@ get_server_body(State=#state{server_buffer=Buffer})->
 get_client_body(State=#state{
 		  client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>})->
     case Transport:recv(Socket, 0, T) of
-        {ok, Data} ->          
-	    {ok, Data, State};         
-        {error, timeout} ->
-	    timeout;
-        {error, closed} ->
-	    closed;
-        Other ->          
-	    Other
+      {ok, Data} ->          
+        {ok, Data, State};         
+      {error, timeout} ->
+        timeout;
+      {error, closed} ->
+        closed;
+      Other ->          
+        Other
     end;
 %% Non empty buffer
 get_client_body(State=#state{client_buffer=Buffer})->
@@ -333,28 +322,28 @@ send_post(Length, State = #state{client_socket = ClientSocket, transport = Trans
     DataSize = iolist_size(Data),
     Restant = Length - DataSize,
     case Restant of
-	0 ->
-	    case Transport:send(ClientSocket, Data) of
-		ok ->
-		    start_receive_reply(State2);                    
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    start_stop(normal, State2);
-		{error, Reason} ->
-		    start_stop({error, Reason}, State2)
-	    end;
-	_ when Restant > 0 ->
-	    case Transport:send(ClientSocket, Data) of
-		ok ->      
-		    send_post(Restant, State);                    
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    start_stop(normal, State);
-		{error, Reason} ->
-		    start_stop({error, Reason}, State)
-	    end;
-	_ ->
-	    start_stop({error, <<"POST with incomplete data">>}, State)
+      0 ->
+        case Transport:send(ClientSocket, Data) of
+          ok ->
+            start_receive_reply(State2);                    
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+     		    start_stop(normal, State2);
+          {error, Reason} ->
+            start_stop({error, Reason}, State2)
+        end;
+      _ when Restant > 0 ->
+        case Transport:send(ClientSocket, Data) of
+          ok ->      
+            send_post(Restant, State);                    
+          {error, closed} ->
+            %% @todo Eu devia alertar sobre isso, não?
+     		    start_stop(normal, State);
+          {error, Reason} ->
+            start_stop({error, Reason}, State)
+        end;
+      _ ->
+        start_stop({error, <<"POST with incomplete data">>}, State)
     end.
 
 start_receive_reply(State) ->
