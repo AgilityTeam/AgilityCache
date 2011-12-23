@@ -47,6 +47,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    start_metrics(),
     %% list({Handler, Opts})      
     Dispatch = [{agilitycache_proxy_handler, []}],
     %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
@@ -65,9 +66,9 @@ init([]) ->
 		 {send_timeout_close, true}, %%... and therefore the connection should be closed
 		 {buffer, BufferSize}
 		],
-    %%error_logger:info_msg("TransOpts~p~n", [TransOpts]),
+    error_logger:info_msg("TransOpts~p~n", [TransOpts]),
     NbAcceptors = proplists:get_value(acceptors, ListenOpts),
-    %%error_logger:info_msg("NbAcceptors: ~p~n", [NbAcceptors]),
+    error_logger:info_msg("NbAcceptors: ~p~n", [NbAcceptors]),
     {ok, _} = cowboy:start_listener(Ref, NbAcceptors,
 				    agilitycache_tcp_transport, TransOpts,
 				    agilitycache_http_protocol, [{dispatch, Dispatch}]
@@ -146,5 +147,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+start_metrics() ->
+  folsom_sup:start_link(),
+  folsom_metrics:new_meter(requests).
 
 

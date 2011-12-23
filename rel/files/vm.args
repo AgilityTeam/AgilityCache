@@ -28,6 +28,8 @@
 ## Reduce GC
 -env ERL_FULLSWEEP_AFTER 0
 
+#-kernel inetrc '"etc/erl_inetrc"'
+
 ## Enable hybrid heap
 # Não funcionando no momento, VM bugada
 #-hybrid

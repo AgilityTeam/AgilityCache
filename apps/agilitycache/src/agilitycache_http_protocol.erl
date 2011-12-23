@@ -48,6 +48,7 @@ start_link(ListenerPid, Socket, Transport, Opts) ->
 %% @private
 -spec init(pid(), inet:socket(), module(), any()) -> ok.
 init(ListenerPid, ServerSocket, Transport, Opts) ->
+    folsom_metrics:notify({requests, 1}),
     MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
     Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
     HttpReq = proplists:get_value(http_req, Opts),

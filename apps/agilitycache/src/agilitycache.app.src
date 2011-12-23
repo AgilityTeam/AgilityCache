@@ -28,9 +28,9 @@
 		   ]      
 	 },
 	 {buffer_size, 1048576},
-	 {listen, [{acceptors, 2048}, {port, 8080}, {max_connections, 4096}]},
+	 {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 4096}]},
 	 %%{keep_alive_timeout, 5},
-	 %%{tcp_timeout, 5},
+	 {tcp_timeout, 32000},
 	 {dscp, [{hit, 12}]},
 	 {database, [
 		     [{path, <<"/home/agilitycache/var/database">>}]
