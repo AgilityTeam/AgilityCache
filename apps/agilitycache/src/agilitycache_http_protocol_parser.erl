@@ -3,7 +3,8 @@
 
 -export([
 	 version_to_connection/1, 
-	 connection_to_atom/1,
+   response_connection/2,
+   response_connection_parse/1,
 	 atom_to_connection/1,
 	 default_port/1, 
 	 format_header/1, 
@@ -16,16 +17,27 @@
 version_to_connection({1, 1}) -> keepalive;
 version_to_connection(_Any) -> close.
 
--spec connection_to_atom(binary()) -> keepalive | close.
-connection_to_atom(<<"keep-alive">>) ->
-    keepalive;
-connection_to_atom(<<"close">>) ->
-    close;
-connection_to_atom(Connection) ->
-    case cowboy_bstr:to_lower(Connection) of
-	<<"close">> -> close;
-	_Any -> keepalive
-    end.
+-spec response_connection(http_headers(), keepalive | close)
+  -> keepalive | close.
+response_connection([], Connection) ->
+  Connection;
+response_connection([{Name, Value}|Tail], Connection) ->
+  case Name of
+    'Connection' -> response_connection_parse(Value);
+    Name when is_atom(Name) -> response_connection(Tail, Connection);
+    Name ->
+      Name2 = cowboy_bstr:to_lower(Name),
+      case Name2 of
+        <<"connection">> -> response_connection_parse(Value);
+        _Any -> response_connection(Tail, Connection)
+      end
+  end.
+
+-spec response_connection_parse(binary()) -> keepalive | close.
+response_connection_parse(ReplyConn) ->
+  Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
+  cowboy_http:connection_to_atom(Tokens).
+
 
 -spec atom_to_connection(keepalive) -> <<_:80>>;
 			(close) -> <<_:40>>.

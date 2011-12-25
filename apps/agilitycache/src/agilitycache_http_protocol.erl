@@ -211,7 +211,7 @@ parse_request_header({http_header, _I, 'Host', _R, RawHost},
 parse_request_header({http_header, _I, 'Host', _R, _V}, State) ->
     start_parse_request_header(State);
 parse_request_header({http_header, _I, 'Connection', _R, Connection}, State = #state{http_req=Req}) ->
-    ConnAtom = agilitycache_http_protocol_parser:connection_to_atom(Connection),
+    ConnAtom = agilitycache_http_protocol_parser:response_connection_parse(Connection),
     start_parse_request_header(State#state{http_req=Req#http_req{connection=ConnAtom,
 								 headers=[{'Connection', Connection}|Req#http_req.headers]}});
 parse_request_header({http_header, _I, Field, _R, Value}, State = #state{http_req=Req}) ->
@@ -401,7 +401,7 @@ wait_reply_header(State=#state{client_socket=Socket,
     end.
 
 parse_reply_header({{http_header, _I, 'Connection', _R, Connection}, State=#state{http_rep=Rep}}) ->
-    ConnAtom = agilitycache_http_protocol_parser:connection_to_atom(Connection),
+    ConnAtom = agilitycache_http_protocol_parser:response_connection_parse(Connection),
     start_parse_reply_header(
       State#state{
         http_rep=Rep#http_rep{connection=ConnAtom,

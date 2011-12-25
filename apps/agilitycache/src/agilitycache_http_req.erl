@@ -130,101 +130,38 @@ content_length(_Transport, _Socket, Req) ->
 %% @doc Send a reply to the client.
 %%-spec reply(pid(), http_status(), http_headers(), iodata(), #http_req{})
 %%	   -> {ok, #http_req{}}.
-reply(Transport, Socket, Code, Headers, Body, Req=#http_req{connection=Connection, method=Method, resp_state=waiting}) ->
-    Head = agilitycache_http_rep:response_head(Code, Headers, [
-							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
-							       {<<"Content-Length">>,
-								list_to_binary(integer_to_list(iolist_size(Body)))},
-							       {<<"Date">>, cowboy_clock:rfc1123()},
-							       {<<"Server">>, <<"AgilityCache">>}
-							      ]),
-    case Method of
-	'HEAD' -> 
-	    case Transport:send(Socket, Head) of
-		ok ->
-		    {ok, Req#http_req{resp_state=done}};
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    {ok, Req#http_req{resp_state=done}};
-		{error, _} = Error ->
-		    Error
-	    end;
-
-	_ ->
-	    case Transport:send(Socket, [Head, Body]) of
-		ok ->
-		    {ok, Req#http_req{resp_state=done}};
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    {ok, Req#http_req{resp_state=done}};
-		{error, _} = Error ->
-		    Error
-	    end
-    end.
+reply(Transport, Socket, Code, Headers, Body, Req) ->
+  {Result, CowboyReq} = cowboy_http_req:reply(Code, Headers, Body, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
+  {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
 
 %% @doc Send a reply to the client.
 %%-spec start_reply(pid(), http_status(), http_headers(), integer()|binary(), #http_req{})
 %%		 -> {ok, #http_req{}}.
 start_reply(Transport, Socket, Code, Headers, Length, Req) when is_integer(Length) ->
     start_reply(Transport, Socket, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
-start_reply(Transport, Socket, Code, Headers, undefined, Req=#http_req{connection=Connection, method=Method}) ->
-    Head = agilitycache_http_rep:response_head(Code, Headers, [
-							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
-							       {<<"Date">>, cowboy_clock:rfc1123()},
-							       {<<"Server">>, <<"AgilityCache">>}
-							      ]),
+start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) ->
+    RespConn = agilitycache_http_protocol_parser:response_connection(Headers, Connection),
+    MyHeaders = case Length of
+      undefined ->
+        [
+          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(RespConn)},
+          {<<"Date">>, cowboy_clock:rfc1123()},
+          {<<"Server">>, <<"AgilityCache">>}
+        ];
+      _ when is_binary(Length) ->
+        [      
+          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(RespConn)},      
+          {<<"Date">>, cowboy_clock:rfc1123()},
+          {<<"Content-Length">>, Length},
+          {<<"Server">>, <<"AgilityCache">>}
+        ]
+    end,
+    
+    Head = agilitycache_http_rep:response_head(Code, Headers, MyHeaders),
+    Result = Transport:send(Socket, Head),
     case Method of
-        'HEAD' ->
-	    case Transport:send(Socket, Head) of
-		ok ->
-		    {ok, Req#http_req{resp_state=done}};
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    {ok, Req#http_req{resp_state=done}};
-		{error, _} = Error ->
-		    Error
-            end;
-
-	_ ->
-	    case Transport:send(Socket, Head) of
-		ok ->
-		    {ok, Req#http_req{resp_state=waiting}};
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    {ok, Req#http_req{resp_state=done}};
-		{error, _} = Error ->
-		    Error
-	    end
-    end;
-start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) when is_binary(Length) ->
-    Head = agilitycache_http_rep:response_head(Code, Headers, [
-							       {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
-							       {<<"Content-Length">>,Length},
-							       {<<"Date">>, cowboy_clock:rfc1123()},
-							       {<<"Server">>, <<"AgilityCache">>}
-							      ]),
-    case Method of
-	'HEAD' ->
-	    case Transport:send(Socket, Head) of
-		ok ->
-		    {ok, Req#http_req{resp_state=done}};
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    {ok, Req#http_req{resp_state=done}};
-		{error, _} = Error ->
-		    Error
-	    end;
-
-	_ ->
-	    case Transport:send(Socket, Head) of
-		ok ->
-		    {ok, Req#http_req{resp_state=waiting}};
-		{error, closed} ->
-		    %% @todo Eu devia alertar sobre isso, não?
-		    {ok, Req#http_req{resp_state=done}};
-		{error, _} = Error ->
-		    Error
-	    end
+      'HEAD' -> {Result, Req#http_req{connection=RespConn, resp_state=done}};
+      _ -> {Result, Req#http_req{connection=RespConn, resp_state=waiting}}
     end.
 
 %% @doc Initiate the sending of a chunked reply to the client.
