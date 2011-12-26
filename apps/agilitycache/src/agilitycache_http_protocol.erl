@@ -66,10 +66,25 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
 				listener=ListenerPid, server_socket=ServerSocket}).
 
 start_handle_request(State) ->
-    read_request(State).
+  error_logger:info_msg("~p Nova requisição start_handle_request...~n", [self()]),
+  read_request(State).
 
 read_request(State) ->
     wait_request(State).
+
+keepalive_wait_request(State=#state{server_socket=Socket, transport=Transport, server_buffer=Buffer}, T) ->
+  Transport:setopts(Socket, [{active, once}]),
+  receive
+    {_, Socket, Data} ->
+      start_parse_request(State#state{server_buffer = << Buffer/binary, Data/binary>>});
+    {tcp_closed, Socket} ->
+      start_stop({http_error, 408}, State);
+    _ ->
+      start_stop(closed, State)
+    after
+      T ->
+        start_stop(timeout, State)
+    end.
 
 wait_request(State=#state{server_socket=Socket, transport=Transport,
 			  timeout=T, server_buffer=Buffer}) ->
@@ -84,6 +99,7 @@ wait_request(State=#state{server_socket=Socket, transport=Transport,
 
 %% @todo Use decode_packet options to limit length?
 start_parse_request(State=#state{server_buffer=Buffer}) ->
+  error_logger:info_msg("~p Nova requisição...~n", [self()]),
     case erlang:decode_packet(http_bin, Buffer, []) of
 	{ok, Request, Rest} ->
 	    parse_request(Request, State#state{server_buffer=Rest});
@@ -153,6 +169,11 @@ parse_request({http_error, <<"\r\n">>},
 	      State=#state{req_empty_lines=N, max_empty_lines=N}) ->
     start_stop({http_error, 400}, State);
 parse_request({http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}) ->
+    start_parse_request(State#state{req_empty_lines=N + 1});
+parse_request({http_error, <<"\n">>},
+        State=#state{req_empty_lines=N, max_empty_lines=N}) ->
+    start_stop({http_error, 400}, State);
+parse_request({http_error, <<"\n">>}, State=#state{req_empty_lines=N}) ->
     start_parse_request(State#state{req_empty_lines=N + 1});
 parse_request({http_error, _Any}, State) ->
     start_stop({http_error, 400}, State);
@@ -481,26 +502,38 @@ send_reply(Remaining, State = #state{server_socket=ServerSocket, transport=Trans
 	    start_stop(normal, State)
     end.
 
-start_stop(normal, State) ->
-    do_stop(State);
-start_stop(_Reason, State) ->
-    %%error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
+start_stop(normal, State = #state{http_req=#http_req{connection=keepalive}, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
+  listener=ListenerPid, server_socket=ServerSocket}) ->
+  error_logger:info_msg("~p Keepalive!~n", [self()]),
+  do_stop_client(State),
+  keepalive_wait_request(#state{timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
+              listener=ListenerPid, server_socket=ServerSocket}, 10000);
+start_stop(normal, State = #state{http_req=HttpReq}) ->
+  error_logger:info_msg("~p Normal :(!~n", [self(), HttpReq]),
+  do_stop(State);
+start_stop(Reason, State) ->
+    error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
     do_stop(State).
 
-do_stop(_State = #state{transport=Transport, server_socket=ServerSocket, client_socket=ClientSocket}) ->
+do_stop(State) ->
+  do_stop_client(State),
+  do_stop_server(State).
+do_stop_server(_State = #state{transport=Transport, server_socket=ServerSocket}) ->
     %%unexpected(start_stop, State),
     case ServerSocket of
-	undefined ->
-	    ok;
-	_ ->
-	    Transport:close(ServerSocket)
-    end,
-    case ClientSocket of 
-	undefined ->
-	    ok;
-	_ ->
-	    Transport:close(ClientSocket)
+      undefined ->
+        ok;
+      _ ->
+        Transport:close(ServerSocket)
     end.
+do_stop_client(_State = #state{transport=Transport, client_socket=ClientSocket}) ->
+  case ClientSocket of 
+    undefined ->
+      ok;
+    _ ->
+      Transport:close(ClientSocket)
+  end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
