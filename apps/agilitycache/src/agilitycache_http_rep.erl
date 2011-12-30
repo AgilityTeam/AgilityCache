@@ -66,7 +66,7 @@ header(Name, Rep, Default) when is_atom(Name) orelse is_binary(Name) ->
 headers(Rep) ->
     {Rep#http_rep.headers, Rep}.
 
--spec content_length(#http_rep{}) -> {binary() | integer(), #http_rep{}}.
+-spec content_length(#http_rep{}) -> {undefined | binary() | integer(), #http_rep{}}.
 content_length(Rep=#http_rep{content_length=undefined}) ->
     {Length, Rep2} = header('Content-Length', Rep),
     {Length, Rep2#http_rep{content_length=Length}};
