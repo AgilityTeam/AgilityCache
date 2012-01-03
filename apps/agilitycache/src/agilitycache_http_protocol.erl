@@ -211,7 +211,8 @@ start_stop(normal, State = #state{http_server=HttpServer, timeout=Timeout, max_e
       error_logger:info_msg("~p Keepalive!~n", [self()]),
       do_stop_client(State),
       HttpServer1 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
-      start_handle_keepalive_request(1000, #state{http_server=HttpServer1, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
+      KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, 300)*1000,
+      start_handle_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer1, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
           listener=ListenerPid});
     _ ->
       error_logger:info_msg("~p Normal :(!~n", [self(), HttpReq]),

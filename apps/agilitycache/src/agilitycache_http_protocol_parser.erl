@@ -5,6 +5,8 @@
 	 version_to_connection/1, 
    response_connection/2,
    response_connection_parse/1,
+   keepalive/2,
+   keepalive_parse/2,
 	 atom_to_connection/1,
 	 default_port/1, 
 	 format_header/1, 
@@ -37,6 +39,35 @@ response_connection([{Name, Value}|Tail], Connection) ->
 response_connection_parse(ReplyConn) ->
   Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
   cowboy_http:connection_to_atom(Tokens).
+
+
+keepalive([], Default) ->
+  Default;
+keepalive([{Name, Value}|Tail], Default) ->
+  case Name of
+    'Keep-Alive' -> keepalive_parse(Value, Default);
+    Name when is_atom(Name) -> keepalive(Tail, Default);
+    Name ->
+      Name2 = cowboy_bstr:to_lower(Name),
+      case Name2 of
+        <<"keep-alive">> -> keepalive_parse(Value, Default);
+        _Any -> keepalive(Tail, Default)
+      end
+  end.
+
+keepalive_parse(Terms, Default) ->
+  Tokens = cowboy_http:list(Terms, fun (A, B) -> B(<<>>, A) end),
+  %%error_logger:info_msg("Tokens: ~p~nTerms: ~p~n", [Tokens, Terms]),
+  keepalive_parse_2(Tokens, Default).
+
+keepalive_parse_2([], Default) ->
+  Default;
+keepalive_parse_2([ << "timeout=", Limit/binary>> |_Tail], _Default) ->
+  list_to_integer(binary_to_list(Limit));
+keepalive_parse_2([_Any|Tail], Default) ->
+  error_logger:info_msg("Tail: ~p~n", [Tail]),
+  keepalive_parse_2(Tail, Default).
+
 
 
 -spec atom_to_connection(keepalive) -> <<_:80>>;
