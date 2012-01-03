@@ -160,10 +160,14 @@ start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connecti
     Head = agilitycache_http_rep:response_head(Code, Headers, MyHeaders),
     %% @todo arrumar isso pra fazer um match mais bonitinho
     %% ou passar isso pra frente
-    {ok, HttpServer0} = agilitycache_http_server:send_data(Head, HttpServer),
-    case Method of
-      'HEAD' -> {Req#http_req{connection=RespConn, resp_state=done}, HttpServer0};
-      _ -> {Req#http_req{connection=RespConn, resp_state=waiting}, HttpServer0}
+    case agilitycache_http_server:send_data(Head, HttpServer) of
+      {ok, HttpServer0} ->
+        case Method of
+          'HEAD' -> {ok, Req#http_req{connection=RespConn, resp_state=done}, HttpServer0};
+          _ -> {ok, Req#http_req{connection=RespConn, resp_state=waiting}, HttpServer0}
+        end;
+      {error, _, _} = Error ->
+        Error
     end.
 
 %% @doc Initiate the sending of a chunked reply to the client.

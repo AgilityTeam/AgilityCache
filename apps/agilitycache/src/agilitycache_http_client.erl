@@ -11,7 +11,7 @@
 %%
 %% Exported Functions
 %%
--export([new/3, start_request/2, start_receive_reply/1, get_http_rep/1, set_http_rep/2, get_body/1, send_data/2, close/1]).
+-export([new/3, start_request/2, start_keepalive_request/2, start_receive_reply/1, get_http_rep/1, set_http_rep/2, get_body/1, send_data/2, close/1]).
 
 -record(http_client_state, {
 	  http_rep :: #http_rep{},
@@ -59,6 +59,12 @@ start_request(HttpReq, State=#http_client_state{transport = Transport, timeout =
       {error, Reason} ->
         {error, Reason, State}
     end.
+
+-spec start_keepalive_request(HttpReq :: #http_req{}, State :: http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
+start_keepalive_request(_HttpReq, State = #http_client_state{client_socket = undefined}) ->
+    {error, invalid_socket, State};
+start_keepalive_request(HttpReq, State) ->
+  start_send_request(HttpReq, State).
 
 -spec start_receive_reply(http_client_state()) -> {ok, http_client_state()} | {error, any(), http_client_state()}.
 start_receive_reply(State) ->
