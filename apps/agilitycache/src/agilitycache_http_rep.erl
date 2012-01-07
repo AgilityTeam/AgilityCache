@@ -133,6 +133,7 @@ parse_qs(Qs) ->
 
 -spec response_head(http_status(), http_headers(), http_headers()) -> iolist().
 response_head(Status, Headers, DefaultHeaders) ->
+    %% @todo Usar request version
     StatusLine = <<"HTTP/1.1 ", (agilitycache_http_protocol_parser:status(Status))/binary, "\r\n">>,
     Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Headers],
     Headers3 = lists:keysort(1, Headers2),
