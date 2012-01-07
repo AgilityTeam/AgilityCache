@@ -23,10 +23,12 @@
 -record(state, {
     http_client :: agilitycache_http_client:http_client_state(),
     http_server :: agilitycache_http_server:http_server_state(),
-	  listener :: pid(),
-	  transport :: module(),
-	  max_empty_lines :: integer(),
-	  timeout = 5000 :: timeout()
+    listener :: pid(),
+    transport :: module(),
+    max_empty_lines = 5 :: integer(),
+    timeout = 5000 :: timeout(),
+    keepalive = both :: both | req | disabled,
+    keepalive_default_timeout = 300 :: non_neg_integer()
 	 }).
 %% API.
 
@@ -55,11 +57,14 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
     %%error_logger:info_msg("ServerSocket buffer ~p", 
     %%  [inet:getopts(ServerSocket, [delay_send])]),
     HttpServer = agilitycache_http_server:new(Transport, ServerSocket, Timeout, MaxEmptyLines),
+    KeepAliveOpts = agilitycache_utils:get_app_env(agilitycache, keepalive, [{type, both}, {max_timeout, 300}]),
+    KeepAlive = proplists:get_value(type, KeepAliveOpts, both),
+    KeepAliveDefaultTimeout = proplists:get_value(max_timeout, KeepAliveOpts, 300),
     start_handle_request(#state{http_server=HttpServer, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-				listener=ListenerPid}).
+				listener=ListenerPid, keepalive = KeepAlive, keepalive_default_timeout = KeepAliveDefaultTimeout}).
 
 start_handle_request(#state{http_server=HttpServer} = State) ->
-  error_logger:info_msg("~p Nova requisição start_handle_request...~n", [self()]),
+ %error_logger:info_msg("~p Nova requisição start_handle_request...~n", [self()]),
   case agilitycache_http_server:read_request(HttpServer) of
     {ok, HttpServer0} ->
       read_reply(State#state{http_server=HttpServer0});
@@ -68,7 +73,7 @@ start_handle_request(#state{http_server=HttpServer} = State) ->
   end.
 
 start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
-  error_logger:info_msg("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
+ %error_logger:info_msg("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
   case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
     {ok, HttpServer0} ->
       read_reply(State#state{http_server=HttpServer0});
@@ -77,7 +82,7 @@ start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServ
   end.
 
 start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
-  error_logger:info_msg("~p Nova requisição start_handle_both_keepalive_request...~n", [self()]),
+ %error_logger:info_msg("~p Nova requisição start_handle_both_keepalive_request...~n", [self()]),
   case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
     {ok, HttpServer0} ->
       read_both_keepalive_reply(State#state{http_server=HttpServer0});
@@ -181,25 +186,25 @@ start_send_reply(State = #state{http_server=HttpServer, http_client=HttpClient})
   end.
 
 send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpClient}) ->
-    %% Bem... oo servidor pode fechar, e isso não nos afeta muito, então
-    %% gerencia aqui se fechar/timeout.
-    case agilitycache_http_client:get_body(HttpClient) of
-      {ok, Data, HttpClient0} ->
-        Size = iolist_size(Data),
-        {Ended, NewRemaining} = case {Remaining, Size} of
-          {_, 0} -> 
-            {true, Remaining};
-          {undefined, _} -> 
-            {false, Remaining};
-          _ when is_integer(Remaining) ->
-            if 
-              Remaining - Size > 0 ->
-                {false, Remaining - Size};
-              Remaining - Size == 0 ->
-                {true, Remaining - Size}
-            end
-        end,
-	    %%error_logger:info_msg("Ended: ~p, Remaining ~p, Size ~p, NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
+  %% Bem... oo servidor pode fechar, e isso não nos afeta muito, então
+  %% gerencia aqui se fechar/timeout.
+  case agilitycache_http_client:get_body(HttpClient) of
+    {ok, Data, HttpClient0} ->
+      Size = iolist_size(Data),
+      {Ended, NewRemaining} = case {Remaining, Size} of
+        {_, 0} -> 
+          {true, Remaining};
+        {undefined, _} -> 
+          {false, Remaining};
+        _ when is_integer(Remaining) ->
+          if 
+            Remaining - Size > 0 ->
+              {false, Remaining - Size};
+            Remaining - Size == 0 ->
+              {true, Remaining - Size}
+          end
+      end,
+      %%error_logger:info_msg("Ended: ~p, Remaining ~p, Size ~p, NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
       case Ended of
         true ->
           case agilitycache_http_server:send_data(Data, HttpServer) of
@@ -229,32 +234,36 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
       start_stop(normal, State#state{http_client=HttpClient0})
   end.
 
+start_stop(normal, State = #state{keepalive=disabled}) ->
+ error_logger:info_msg("~p Normal, keepalive disabled!~n", [self()]),
+  do_stop(State);
 start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-  listener=ListenerPid}) ->
+    listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout}) ->
   {HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
   {HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-  case {HttpReq#http_req.connection, HttpRep#http_rep.connection} of
-    {keepalive, keepalive} ->
-      error_logger:info_msg("~p Keepalive both!~n", [self()]),
-      ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, 300)*1000,
-      RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, 300)*1000,
+  case {KeepAliveType, HttpReq#http_req.connection, HttpRep#http_rep.connection} of
+    {both, keepalive, keepalive} ->
+     error_logger:info_msg("~p Keepalive both!~n", [self()]),
+      ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
+      RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, KeepAliveDefaultTimeout)*1000,
       KeepAliveTimeout = min(ReqKeepAliveTimeout, RepKeepAliveTimeout),
       start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer0, http_client=HttpClient0, 
-          timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, listener=ListenerPid});
-    {keepalive, close} ->
-      error_logger:info_msg("~p Keepalive HttpReq!~n", [self()]),
+          timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, listener=ListenerPid,
+          keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
+    {_, keepalive, close} ->
+     error_logger:info_msg("~p Keepalive HttpReq!~n", [self()]),
       do_stop_client(State),
       HttpServer1 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
-      KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, 300)*1000,
+      KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer1, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-          listener=ListenerPid});
+          listener=ListenerPid, keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     _ ->
-      error_logger:info_msg("~p Normal :( ~p!~n", [self(), HttpReq]),
+     error_logger:info_msg("~p Normal :( ~p!~n", [self(), HttpReq]),
       do_stop(State)
   end;
 start_stop(Reason, State) ->
-    error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
-    do_stop(State).
+ error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
+  do_stop(State).
 
 do_stop(State) ->
   do_stop_client(State),

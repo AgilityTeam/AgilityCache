@@ -1,39 +1,39 @@
 {application, agilitycache,
- [
-  {description, "A powerfull http proxy"},
-  {vsn, "3.0.0"},
-  {applications, [
-		  kernel,
-		  stdlib,
-		  cowboy
-		 ]},
-  {mod, { agilitycache_app, []}},
-  {env, [
-	 {cache_dirs, [
-		       [ 
-			 {limit, 70}, %% Em porcentagem
-			 {max_filesize, <<"500MiB">>},
-			 {min_filesize, <<"1kiB">>},
-			 {path, <<"/home/agilitycache/var/cache">>}
-		       ]
-		      ]},
-	 {plugins, [
-		    %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
-		    agilitycache_plugin_orkut%%,
-		    %%agilitycache_plugin_youtube_video,
-		    %%agilitycache_plugin_windows_update,
-		    %%agilitycache_plugin_file_hosters,
-		    %%agilitycache_plugin_erroneous_sites,
-		    %%agilitycache_plugin_static_file
-		   ]      
-	 },
-	 {buffer_size, 1048576},
-	 {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 4096}]},
-	 {max_keep_alive_timeout, 120},
-	 {tcp_timeout, 5000},
-	 {dscp, [{hit, 12}]},
-	 {database, [
-		     [{path, <<"/home/agilitycache/var/database">>}]
-		    ]}
-	]}
- ]}.
+  [
+    {description, "A powerfull http proxy"},
+    {vsn, "3.0.0"},
+    {applications, [
+        kernel,
+        stdlib,
+        cowboy
+      ]},
+    {mod, { agilitycache_app, []}},
+    {env, [
+        {cache_dirs, [
+            [ 
+              {limit, 70}, %% Em porcentagem
+              {max_filesize, <<"500MiB">>},
+              {min_filesize, <<"1kiB">>},
+              {path, <<"/home/agilitycache/var/cache">>}
+            ]
+          ]},
+        {plugins, [
+            %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
+            agilitycache_plugin_orkut%%,
+            %%agilitycache_plugin_youtube_video,
+            %%agilitycache_plugin_windows_update,
+            %%agilitycache_plugin_file_hosters,
+            %%agilitycache_plugin_erroneous_sites,
+            %%agilitycache_plugin_static_file
+          ]      
+        },
+        {buffer_size, 1048576},
+        {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 4096}]},
+        {tcp_timeout, 5000},
+        {dscp, [{hit, 12}]},
+        {keepalive, [{type, both}, {max_timeout, 300}]},
+        {database, [
+            [{path, <<"/home/agilitycache/var/database">>}]
+          ]}
+      ]}
+  ]}.
