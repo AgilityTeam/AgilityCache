@@ -28,7 +28,7 @@
           ]      
         },
         {buffer_size, 1048576},
-        {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 4096}]},
+        {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 65535}]},
         {tcp_timeout, 5000},
         {dscp, [{hit, 12}]},
         {keepalive, [{type, both}, {max_timeout, 300}]},

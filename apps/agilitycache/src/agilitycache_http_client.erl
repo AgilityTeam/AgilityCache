@@ -51,7 +51,8 @@ start_request(HttpReq, State=#http_client_state{transport = Transport, timeout =
     %{nodelay, true}%, %% We want to be informed even when packages are small
     {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
     {send_timeout_close, true}, %%... and therefore the connection should be closed
-    {buffer, BufferSize}
+    {buffer, BufferSize},
+    {delay_send, true}
     ],
     case Transport:connect(binary_to_list(RawHost), Port, TransOpts, Timeout) of
       {ok, Socket} ->

@@ -65,7 +65,7 @@ keepalive_parse_2([], Default) ->
 keepalive_parse_2([ << "timeout=", Limit/binary>> |_Tail], _Default) ->
   list_to_integer(binary_to_list(Limit));
 keepalive_parse_2([_Any|Tail], Default) ->
-  error_logger:info_msg("Tail: ~p~n", [Tail]),
+  %error_logger:info_msg("Tail: ~p~n", [Tail]),
   keepalive_parse_2(Tail, Default).
 
 

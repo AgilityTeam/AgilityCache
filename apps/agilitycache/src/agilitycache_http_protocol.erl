@@ -52,7 +52,8 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
 				     %{nodelay, true}%, %% We want to be informed even when packages are small             
 				     {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
 				     {send_timeout_close, true}, %%... and therefore the connection should be closed
-             {buffer, BufferSize}
+             {buffer, BufferSize},
+             {delay_send, true}
 				    ]),
     %%error_logger:info_msg("ServerSocket buffer ~p", 
     %%  [inet:getopts(ServerSocket, [delay_send])]),
@@ -119,7 +120,7 @@ read_reply(#state{http_server=HttpServer, transport=Transport, timeout=Timeout, 
 start_send_post(State = #state{http_server=HttpServer}) ->
   {HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),  
   {Length, HttpReq2} = agilitycache_http_req:content_length(undefined, undefined, HttpReq),
-  HttpServer1 = agilithcache_http_server:set_http_req(HttpReq2, HttpServer0),
+  HttpServer1 = agilitycache_http_server:set_http_req(HttpReq2, HttpServer0),
   State2 = State#state{http_server=HttpServer1},
   case Length of
     undefined ->
@@ -235,7 +236,7 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
   end.
 
 start_stop(normal, State = #state{keepalive=disabled}) ->
- error_logger:info_msg("~p Normal, keepalive disabled!~n", [self()]),
+ %error_logger:info_msg("~p Normal, keepalive disabled!~n", [self()]),
   do_stop(State);
 start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
     listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout}) ->
@@ -243,7 +244,7 @@ start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient
   {HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
   case {KeepAliveType, HttpReq#http_req.connection, HttpRep#http_rep.connection} of
     {both, keepalive, keepalive} ->
-     error_logger:info_msg("~p Keepalive both!~n", [self()]),
+     %error_logger:info_msg("~p Keepalive both!~n", [self()]),
       ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, KeepAliveDefaultTimeout)*1000,
       KeepAliveTimeout = min(ReqKeepAliveTimeout, RepKeepAliveTimeout),
@@ -251,18 +252,18 @@ start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient
           timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, listener=ListenerPid,
           keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     {_, keepalive, close} ->
-     error_logger:info_msg("~p Keepalive HttpReq!~n", [self()]),
+     %error_logger:info_msg("~p Keepalive HttpReq!~n", [self()]),
       do_stop_client(State),
       HttpServer1 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
       KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer1, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
           listener=ListenerPid, keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     _ ->
-     error_logger:info_msg("~p Normal :( ~p!~n", [self(), HttpReq]),
+     %error_logger:info_msg("~p Normal :( ~p!~n", [self(), HttpReq]),
       do_stop(State)
   end;
-start_stop(Reason, State) ->
- error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
+start_stop(_Reason, State) ->
+ %error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
   do_stop(State).
 
 do_stop(State) ->
