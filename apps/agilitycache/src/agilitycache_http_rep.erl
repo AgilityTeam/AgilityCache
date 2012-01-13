@@ -11,7 +11,8 @@
 	 peer/3,
 	 header/2, header/3, headers/1,
 	 cookie/2, cookie/3, cookies/1,
-	 content_length/1
+	 content_length/1,
+   parse_qs/1
 	]). %% Request API.
 
 -export([
@@ -144,23 +145,3 @@ response_head(Status, Headers, DefaultHeaders) ->
 
 response_head(Rep) ->
     response_head(Rep#http_rep.status, Rep#http_rep.headers, []).
-
-%% Tests.
-
--ifdef(TEST).
-
-parse_qs_test_() ->
-    %% {Qs, Result}
-    Tests = [
-	     {<<"">>, []},
-	     {<<"a=b">>, [{<<"a">>, <<"b">>}]},
-	     {<<"aaa=bbb">>, [{<<"aaa">>, <<"bbb">>}]},
-	     {<<"a&b">>, [{<<"a">>, true}, {<<"b">>, true}]},
-	     {<<"a=b&c&d=e">>, [{<<"a">>, <<"b">>},
-				{<<"c">>, true}, {<<"d">>, <<"e">>}]},
-	     {<<"a=b=c=d=e&f=g">>, [{<<"a">>, <<"b=c=d=e">>}, {<<"f">>, <<"g">>}]},
-	     {<<"a+b=c+d">>, [{<<"a b">>, <<"c d">>}]}
-	    ],
-    [{Qs, fun() -> R = parse_qs(Qs) end} || {Qs, R} <- Tests].
-
--endif.
