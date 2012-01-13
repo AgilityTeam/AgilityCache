@@ -66,7 +66,7 @@ header(Name, Rep, Default) when is_atom(Name) orelse is_binary(Name) ->
 headers(Rep) ->
     {Rep#http_rep.headers, Rep}.
 
--spec content_length(#http_rep{}) -> {binary() | integer(), #http_rep{}}.
+-spec content_length(#http_rep{}) -> {undefined | binary() | integer(), #http_rep{}}.
 content_length(Rep=#http_rep{content_length=undefined}) ->
     {Length, Rep2} = header('Content-Length', Rep),
     {Length, Rep2#http_rep{content_length=Length}};
@@ -133,6 +133,7 @@ parse_qs(Qs) ->
 
 -spec response_head(http_status(), http_headers(), http_headers()) -> iolist().
 response_head(Status, Headers, DefaultHeaders) ->
+    %% @todo Usar request version
     StatusLine = <<"HTTP/1.1 ", (agilitycache_http_protocol_parser:status(Status))/binary, "\r\n">>,
     Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Headers],
     Headers3 = lists:keysort(1, Headers2),

@@ -24,7 +24,6 @@ dialyze:
 		-Wunmatched_returns \
 		-Werror_handling \
 		-Wrace_conditions \
-		-Wbehaviours \
 		-Wunderspecs \
 		-r apps
 

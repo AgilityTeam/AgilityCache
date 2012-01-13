@@ -19,7 +19,7 @@
 -export([
 	 reply/6, 
 	 start_chunked_reply/5, send_chunk/4, stop_chunked_reply/3,
-	 start_reply/6
+	 start_reply/5
 	]). %% Response API.
 
 -export([
@@ -118,7 +118,7 @@ cookies(Transport, Socket, Req) ->
     {Result, CowboyReq} = cowboy_http_req:cookies(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
     {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
     
--spec content_length(module(), inet:socket(), #http_req{}) -> {binary() | integer(), #http_req{}}.
+-spec content_length(module(), inet:socket(), #http_req{}) -> {undefined | non_neg_integer() | binary(), #http_req{}}.
 content_length(Transport, Socket, Req=#http_req{content_length=undefined}) ->
     {Length, Req} = header('Content-Length', Transport, Socket, Req),
     {Length, Req#http_req{content_length=Length}};
@@ -137,9 +137,9 @@ reply(Transport, Socket, Code, Headers, Body, Req) ->
 %% @doc Send a reply to the client.
 %%-spec start_reply(pid(), http_status(), http_headers(), integer()|binary(), #http_req{})
 %%		 -> {ok, #http_req{}}.
-start_reply(Transport, Socket, Code, Headers, Length, Req) when is_integer(Length) ->
-    start_reply(Transport, Socket, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
-start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) ->
+start_reply(HttpServer, Code, Headers, Length, Req) when is_integer(Length) ->
+    start_reply(HttpServer, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
+start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) ->
     RespConn = agilitycache_http_protocol_parser:response_connection(Headers, Connection),
     MyHeaders = case Length of
       undefined ->
@@ -158,10 +158,16 @@ start_reply(Transport, Socket, Code, Headers, Length, Req=#http_req{connection=C
     end,
     
     Head = agilitycache_http_rep:response_head(Code, Headers, MyHeaders),
-    Result = Transport:send(Socket, Head),
-    case Method of
-      'HEAD' -> {Result, Req#http_req{connection=RespConn, resp_state=done}};
-      _ -> {Result, Req#http_req{connection=RespConn, resp_state=waiting}}
+    %% @todo arrumar isso pra fazer um match mais bonitinho
+    %% ou passar isso pra frente
+    case agilitycache_http_server:send_data(Head, HttpServer) of
+      {ok, HttpServer0} ->
+        case Method of
+          'HEAD' -> {ok, Req#http_req{connection=RespConn, resp_state=done}, HttpServer0};
+          _ -> {ok, Req#http_req{connection=RespConn, resp_state=waiting}, HttpServer0}
+        end;
+      {error, _, _} = Error ->
+        Error
     end.
 
 %% @doc Initiate the sending of a chunked reply to the client.

@@ -56,7 +56,7 @@
 	  headers    = []        :: http_headers(),
 	  cookies    = undefined :: undefined | http_cookies(),
 	  connection = keepalive :: keepalive | close,
-	  content_length     = undefined :: undefined | non_neg_integer(),
+	  content_length     = undefined :: undefined | non_neg_integer() | binary(),
 
 	  %% Request body.
 	  body_state = waiting   :: waiting | done,
