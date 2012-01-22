@@ -5,6 +5,7 @@
     {applications, [
         kernel,
         stdlib,
+        os_mon,
         cowboy
       ]},
     {mod, { agilitycache_app, []}},
@@ -33,7 +34,7 @@
         {dscp, [{hit, 12}]},
         {keepalive, [{type, both}, {max_timeout, 300}]},
         {database, [
-            [{path, <<"/home/agilitycache/var/database">>}]
+            [{path, <<"/opt/agilitycache/var/cache/database">>}]
           ]}
       ]}
   ]}.

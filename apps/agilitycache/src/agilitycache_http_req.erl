@@ -118,7 +118,7 @@ cookies(Transport, Socket, Req) ->
     {Result, CowboyReq} = cowboy_http_req:cookies(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
     {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
     
--spec content_length(module(), inet:socket(), #http_req{}) -> {undefined | non_neg_integer() | binary(), #http_req{}}.
+-spec content_length(undefined | module(), undefined | inet:socket(), #http_req{}) -> {undefined | non_neg_integer() | binary(), #http_req{}}.
 content_length(Transport, Socket, Req=#http_req{content_length=undefined}) ->
     {Length, Req} = header('Content-Length', Transport, Socket, Req),
     {Length, Req#http_req{content_length=Length}};

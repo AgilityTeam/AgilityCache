@@ -21,8 +21,8 @@
 -include("include/http.hrl").
 
 -record(state, {
-    http_client :: agilitycache_http_client:http_client_state(),
-    http_server :: agilitycache_http_server:http_server_state(),
+    http_client = undefined :: agilitycache_http_client:http_client_state() | undefined,
+    http_server = undefined :: agilitycache_http_server:http_server_state() | undefined,
     listener :: pid(),
     transport :: module(),
     max_empty_lines = 5 :: integer(),
@@ -273,11 +273,13 @@ do_stop_server(_State = #state{http_server=undefined}) ->
   ok;
 do_stop_server(_State = #state{http_server=HttpServer}) ->
   %%unexpected(start_stop, State),
-  agilitycache_http_server:close(HttpServer).
+  agilitycache_http_server:close(HttpServer),
+  ok.
 do_stop_client(_State = #state{http_client=undefined}) ->
   ok;
 do_stop_client(_State = #state{http_client=HttpClient}) ->
-  agilitycache_http_client:close(HttpClient).
+  agilitycache_http_client:close(HttpClient),
+  ok.
 
 %%%===================================================================
 %%% Internal functions

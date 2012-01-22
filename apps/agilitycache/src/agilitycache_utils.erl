@@ -2,7 +2,6 @@
 -export([get_app_env/2, get_app_env/3]).
 
 %% @equiv header(agilitycache, Key, Default)
--spec get_app_env(any(), any()) -> any().
 get_app_env(Key, Default) ->
   get_app_env(agilitycache, Key, Default).
 
