@@ -19,14 +19,17 @@
             ]
           ]},
         {plugins, [
+          {cache, [
             %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
-            agilitycache_plugin_orkut%%,
+            agilitycache_cache_plugin_orkut%%,
             %%agilitycache_plugin_youtube_video,
             %%agilitycache_plugin_windows_update,
             %%agilitycache_plugin_file_hosters,
             %%agilitycache_plugin_erroneous_sites,
-            %%agilitycache_plugin_static_file
-          ]      
+            %%agilitycache_plugin_static_file 
+              ]
+          }
+          ]
         },
         {buffer_size, 1048576},
         {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 65535}]},

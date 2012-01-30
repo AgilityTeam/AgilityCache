@@ -28,7 +28,8 @@
     max_empty_lines = 5 :: integer(),
     timeout = 5000 :: timeout(),
     keepalive = both :: both | req | disabled,
-    keepalive_default_timeout = 300 :: non_neg_integer()
+    keepalive_default_timeout = 300 :: non_neg_integer(),
+    cache_plugin = agilitycache_cache_plugin_default :: module()
 	 }).
 %% API.
 
@@ -68,7 +69,7 @@ start_handle_request(#state{http_server=HttpServer} = State) ->
  %error_logger:info_msg("~p Nova requisição start_handle_request...~n", [self()]),
   case agilitycache_http_server:read_request(HttpServer) of
     {ok, HttpServer0} ->
-      read_reply(State#state{http_server=HttpServer0});
+      check_plugins(State#state{http_server=HttpServer0}, fun read_reply/1);
     {error, Reason, HttpServer1} ->
       start_stop({error, Reason}, State#state{http_server=HttpServer1})
   end.
@@ -77,7 +78,7 @@ start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServ
  %error_logger:info_msg("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
   case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
     {ok, HttpServer0} ->
-      read_reply(State#state{http_server=HttpServer0});
+      check_plugins(State#state{http_server=HttpServer0}, fun read_reply/1);
     {error, Reason, HttpServer1} ->
       start_stop({error, Reason}, State#state{http_server=HttpServer1})
   end.
@@ -86,9 +87,9 @@ start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpSer
  %error_logger:info_msg("~p Nova requisição start_handle_both_keepalive_request...~n", [self()]),
   case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
     {ok, HttpServer0} ->
-      read_both_keepalive_reply(State#state{http_server=HttpServer0});
+      check_plugins(State#state{http_server=HttpServer0}, fun read_both_keepalive_reply/1);
     {error, closed, HttpServer1} ->
-      read_reply(State#state{http_server=HttpServer1});
+      check_plugins(State#state{http_server=HttpServer1}, fun read_reply/1);
     {error, Reason, HttpServer1} ->
       start_stop({error, Reason}, State#state{http_server=HttpServer1})
   end.
@@ -163,7 +164,7 @@ send_post(Length, State = #state{http_client=HttpClient, http_server=HttpServer}
 
 start_receive_reply(State = #state{http_client = HttpClient}) ->
   {ok, HttpClient0} = agilitycache_http_client:start_receive_reply(HttpClient),
-  start_send_reply(State#state{http_client=HttpClient0}).
+  check_cacheability(State#state{http_client=HttpClient0}).
 
 start_send_reply(State = #state{http_server=HttpServer, http_client=HttpClient}) ->
   {HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
@@ -281,7 +282,37 @@ do_stop_client(_State = #state{http_client=HttpClient}) ->
   agilitycache_http_client:close(HttpClient),
   ok.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+%%% ============================
+%%% Plugin logic
+%%% @todo: remover isto daqui? colocar em outro módulo?
+%%% ============================
 
+check_cacheability(State = #state{cache_plugin = Plugin, http_server=HttpServer, http_client=HttpClient}) ->
+  {HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
+  {HttpRep, _HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
+  Cacheable = Plugin:cacheable(HttpReq, HttpRep),
+  error_logger:info_msg("Plugin: ~p~n", [Plugin]),
+  error_logger:info_msg("HttpReq: ~p~n", [HttpReq]),
+  error_logger:info_msg("HttpRep: ~p~n", [HttpRep]),
+  error_logger:info_msg("Cacheable: ~p~n", [Cacheable]),
+  start_send_reply(State).
+
+check_plugins(State = #state{http_server=HttpServer}, Function) ->
+  Plugins = agilitycache_utils:get_app_env(plugins, [{cache, []}]),
+  CachePlugins = lists:append([proplists:get_value(cache, Plugins, []), [agilitycache_cache_plugin_default]]),
+  error_logger:info_msg("CachePlugins: ~p~n", [CachePlugins]),
+  {HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
+  error_logger:info_msg("HttpReq: ~p~n", [HttpReq]),
+  InCharge = test_in_charge_plugins(CachePlugins, HttpReq, agilitycache_cache_plugin_default),
+  error_logger:info_msg("InCharge: ~p~n", [InCharge]),
+  Function(State#state{cache_plugin = InCharge}).
+
+test_in_charge_plugins([], _, Default) ->
+  Default;
+test_in_charge_plugins([Plugin | T], HttpReq, Default) ->
+  case Plugin:in_charge(HttpReq) of
+    true ->
+      Plugin;
+    false ->
+      test_in_charge_plugins(T, HttpReq, Default)
+  end.
