@@ -13,8 +13,8 @@ find_file(FileId) ->
   case FoundPaths of
     [] ->
       {error, notfound};
-    [Path | _] ->
-			Path
+    Paths1 ->
+      erlang:hd(Paths1)
   end.
 
 
