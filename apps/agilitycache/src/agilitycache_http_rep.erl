@@ -133,7 +133,6 @@ parse_qs(Qs) ->
 
 -spec response_head(http_version(), http_status(), http_headers(), http_headers()) -> iolist().
 response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
-    %% @todo Usar request version
     Majorb = list_to_binary(integer_to_list(VMajor)),
     Minorb = list_to_binary(integer_to_list(VMinor)),
     StatusLine = <<"HTTP/", Majorb/binary, ".", Minorb/binary, " ", (agilitycache_http_protocol_parser:status(Status))/binary, "\r\n">>,
