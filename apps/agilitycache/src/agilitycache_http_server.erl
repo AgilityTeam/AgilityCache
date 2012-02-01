@@ -243,6 +243,12 @@ parse_request_header({http_header, _I, 'Connection', _R, Connection}, State = #h
     ConnAtom = agilitycache_http_protocol_parser:response_connection_parse(Connection),
     start_parse_request_header(State#http_server_state{http_req=Req#http_req{connection=ConnAtom,
 								 headers=[{'Connection', Connection}|Req#http_req.headers]}});
+parse_request_header({http_header, _I, 'Proxy-Connection', _R, _Connection}, State = #http_server_state{http_req=Req}) ->
+    %%ConnAtom = agilitycache_http_protocol_parser:response_proxy_connection_parse(Connection),
+    %% Desabilitando keepalive em proxy-connection
+    ConnAtom = close,
+    start_parse_request_header(State#http_server_state{http_req=Req#http_req{connection=ConnAtom,
+								 headers=[Req#http_req.headers]}});
 parse_request_header({http_header, _I, Field, _R, Value}, State = #http_server_state{http_req=Req}) ->
     Field2 = agilitycache_http_protocol_parser:format_header(Field),
     start_parse_request_header(State#http_server_state{http_req=Req#http_req{headers=[{Field2, Value}|Req#http_req.headers]}});

@@ -5,6 +5,8 @@
 	 version_to_connection/1, 
    response_connection/2,
    response_connection_parse/1,
+   response_proxy_connection/2,
+   response_proxy_connection_parse/1,
    keepalive/2,
    keepalive_parse/2,
 	 atom_to_connection/1,
@@ -40,6 +42,27 @@ response_connection_parse(ReplyConn) ->
   Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
   cowboy_http:connection_to_atom(Tokens).
 
+
+-spec response_proxy_connection(http_headers(), keepalive | close)
+  -> keepalive | close.
+response_proxy_connection([], Connection) ->
+  Connection;
+response_proxy_connection([{Name, Value}|Tail], Connection) ->
+  case Name of
+    'Proxy-Connection' -> response_proxy_connection_parse(Value);
+    Name when is_atom(Name) -> response_proxy_connection(Tail, Connection);
+    Name ->
+      Name2 = cowboy_bstr:to_lower(Name),
+      case Name2 of
+        <<"proxy-connection">> -> response_proxy_connection_parse(Value);
+        _Any -> response_proxy_connection(Tail, Connection)
+      end
+  end.
+
+-spec response_proxy_connection_parse(binary()) -> keepalive | close.
+response_proxy_connection_parse(ReplyConn) ->
+  Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
+  cowboy_http:connection_to_atom(Tokens).
 
 keepalive([], Default) ->
   Default;
