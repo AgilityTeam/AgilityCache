@@ -139,32 +139,31 @@ reply(Transport, Socket, Code, Headers, Body, Req) ->
 %%		 -> {ok, #http_req{}}.
 start_reply(HttpServer, Code, Headers, Length, Req) when is_integer(Length) ->
     start_reply(HttpServer, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
-start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method}) ->
-    RespConn = agilitycache_http_protocol_parser:response_connection(Headers, Connection),
+start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method, version=Version}) ->
     MyHeaders = case Length of
       undefined ->
         [
-          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(RespConn)},
+          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
           {<<"Date">>, cowboy_clock:rfc1123()},
           {<<"Server">>, <<"AgilityCache">>}
         ];
       _ when is_binary(Length) ->
         [      
-          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(RespConn)},      
+          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},      
           {<<"Date">>, cowboy_clock:rfc1123()},
           {<<"Content-Length">>, Length},
           {<<"Server">>, <<"AgilityCache">>}
         ]
     end,
     
-    Head = agilitycache_http_rep:response_head(Code, Headers, MyHeaders),
+    Head = agilitycache_http_rep:response_head(Version, Code, Headers, MyHeaders),
     %% @todo arrumar isso pra fazer um match mais bonitinho
     %% ou passar isso pra frente
     case agilitycache_http_server:send_data(Head, HttpServer) of
       {ok, HttpServer0} ->
         case Method of
-          'HEAD' -> {ok, Req#http_req{connection=RespConn, resp_state=done}, HttpServer0};
-          _ -> {ok, Req#http_req{connection=RespConn, resp_state=waiting}, HttpServer0}
+          'HEAD' -> {ok, Req#http_req{resp_state=done}, HttpServer0};
+          _ -> {ok, Req#http_req{resp_state=waiting}, HttpServer0}
         end;
       {error, _, _} = Error ->
         Error
@@ -174,8 +173,8 @@ start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connecti
 %% @see agilitycache_http_req:chunk/2
 %%-spec start_chunked_reply(pid(), http_status(), http_headers(), #http_req{})
 %%			 -> {ok, #http_req{}}.
-start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{method='HEAD', resp_state=waiting}) ->
-    Head = agilitycache_http_rep:response_head(Code, Headers, [
+start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{method='HEAD', resp_state=waiting, version=Version}) ->
+    Head = agilitycache_http_rep:response_head(Version, Code, Headers, [
 							       {<<"Date">>, cowboy_clock:rfc1123()},
 							       {<<"Server">>, <<"AgilityCache">>}
 							      ]),
@@ -188,8 +187,8 @@ start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{method='HEAD
 	{error, _} = Error ->
             Error
     end;
-start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=waiting}) ->
-    Head = agilitycache_http_rep:response_head(Code, Headers, [
+start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=waiting, version=Version}) ->
+    Head = agilitycache_http_rep:response_head(Version, Code, Headers, [
 							       {<<"Connection">>, <<"close">>},
 							       {<<"Transfer-Encoding">>, <<"chunked">>},
 							       {<<"Date">>, cowboy_clock:rfc1123()},

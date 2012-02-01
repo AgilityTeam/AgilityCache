@@ -17,7 +17,7 @@
 -export([
 	 compact/1,
 	 response_head/1,
-	 response_head/3
+	 response_head/4
 	]). %% Misc API.
 
 -include("include/http.hrl").
@@ -131,19 +131,22 @@ parse_qs(Qs) ->
     URLDecode = fun(Bin) -> cowboy_http:urldecode(Bin, crash) end,
     cowboy_http_req:parse_qs(Qs, URLDecode).
 
--spec response_head(http_status(), http_headers(), http_headers()) -> iolist().
-response_head(Status, Headers, DefaultHeaders) ->
+-spec response_head(http_version(), http_status(), http_headers(), http_headers()) -> iolist().
+response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     %% @todo Usar request version
-    StatusLine = <<"HTTP/1.1 ", (agilitycache_http_protocol_parser:status(Status))/binary, "\r\n">>,
+    Majorb = list_to_binary(integer_to_list(VMajor)),
+    Minorb = list_to_binary(integer_to_list(VMinor)),
+    StatusLine = <<"HTTP/", Majorb/binary, ".", Minorb/binary, " ", (agilitycache_http_protocol_parser:status(Status))/binary, "\r\n">>,
     Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Headers],
-    Headers3 = lists:keysort(1, Headers2),
-    Headers4 = lists:ukeymerge(1, Headers3, DefaultHeaders),
+    Headers3 = lists:ukeysort(1, Headers2),
+    DefaultHeaders0 = lists:ukeysort(1, DefaultHeaders),
+    Headers4 = lists:ukeymerge(1, DefaultHeaders0, Headers3),
     Headers5 = [<< Key/binary, ": ", Value/binary, "\r\n" >>
 		    || {Key, Value} <- Headers4],
     [StatusLine, Headers5, <<"\r\n">>].
 
 response_head(Rep) ->
-    response_head(Rep#http_rep.status, Rep#http_rep.headers, []).
+    response_head({1, 1}, Rep#http_rep.status, Rep#http_rep.headers, []).
 
 %% Tests.
 
