@@ -1,5 +1,5 @@
 -module(agilitycache_utils).
--export([get_app_env/2, get_app_env/3]).
+-export([get_app_env/2, get_app_env/3, hexstring/1]).
 
 %% @equiv header(agilitycache, Key, Default)
 get_app_env(Key, Default) ->
@@ -16,3 +16,5 @@ get_app_env(App, Key, Default) ->
       Value
     end.
 
+hexstring(<<X:128/big-unsigned-integer>>) ->
+    lists:flatten(io_lib:format("~32.16.0B", [X])).

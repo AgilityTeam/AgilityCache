@@ -27,11 +27,8 @@ get_best_filepath(FileId) ->
   end.
 
 get_subpath(FileId) ->
-  HexFileId = list_to_binary(hexstring(FileId)),
+  HexFileId = list_to_binary(agilitycache_utils:hexstring(FileId)),
   filename:join([binary:at(HexFileId, 1), binary:at(HexFileId, 20), HexFileId]).
-
-hexstring(<<X:128/big-unsigned-integer>>) ->
-  lists:flatten(io_lib:format("~32.16.0B", [X])).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
