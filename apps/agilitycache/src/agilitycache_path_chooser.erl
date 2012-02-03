@@ -2,7 +2,7 @@
 
 -export([get_best_path/1]).
 
--spec get_best_path(list() | undefined) -> binary() | string() | {error, any()}. 
+-spec get_best_path(list() | undefined) -> {ok, binary() | string()} | {error, any()}. 
 get_best_path(undefined) ->
   {error, <<"Invalid path list">>};
 %% @todo Improve checks
@@ -12,7 +12,7 @@ get_best_path(Paths) ->
       {error, Cause};
     Path ->
       {Fs, _, _} = erlang:hd(Path),
-      Fs
+      {ok, Fs}
   end.
 
 -spec get_least_used(list()) -> list() | {error, any()}.

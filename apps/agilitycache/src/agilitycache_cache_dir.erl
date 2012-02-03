@@ -22,7 +22,7 @@ get_best_filepath(FileId) ->
   case agilitycache_path_chooser:get_best_path(application:get_env(?APPLICATION, cache_dirs)) of
     {error, Cause} ->
       {error, Cause};
-    Path ->
+    {ok, Path} ->
       filename:join([Path, get_subpath(FileId)])
   end.
 
