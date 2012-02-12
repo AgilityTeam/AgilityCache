@@ -15,12 +15,12 @@
 
 -record(http_server_state, {
 	  http_req :: #http_req{},
-	  server_socket :: inet:socket(),	  
+	  server_socket :: inet:socket(),
 	  transport :: module(),
-	  req_empty_lines = 0 :: integer(),	  
+	  req_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
 	  timeout = 5000 :: timeout(),
-	  server_buffer = <<>> :: binary()	
+	  server_buffer = <<>> :: binary()
 }).
 
 -opaque http_server_state() :: #http_server_state{}.
@@ -247,8 +247,7 @@ parse_request_header({http_header, _I, 'Proxy-Connection', _R, _Connection}, Sta
     %%ConnAtom = agilitycache_http_protocol_parser:response_proxy_connection_parse(Connection),
     %% Desabilitando keepalive em proxy-connection
     ConnAtom = close,
-    start_parse_request_header(State#http_server_state{http_req=Req#http_req{connection=ConnAtom,
-								 headers=[Req#http_req.headers]}});
+    start_parse_request_header(State#http_server_state{http_req=Req#http_req{connection=ConnAtom}});
 parse_request_header({http_header, _I, Field, _R, Value}, State = #http_server_state{http_req=Req}) ->
     Field2 = agilitycache_http_protocol_parser:format_header(Field),
     start_parse_request_header(State#http_server_state{http_req=Req#http_req{headers=[{Field2, Value}|Req#http_req.headers]}});
