@@ -6,16 +6,17 @@
         kernel,
         stdlib,
         os_mon,
-        cowboy
+        cowboy,
+        lager
       ]},
     {mod, { agilitycache_app, []}},
     {env, [
         {cache_dirs, [
-            [ 
+            [
               {limit, 70}, %% Em porcentagem
               {max_filesize, <<"500MiB">>},
               {min_filesize, <<"1kiB">>},
-              {path, <<"/home/agilitycache/var/cache">>}
+              {path, <<"/opt/agilitycache/var/cache">>}
             ]
           ]},
         {plugins, [
@@ -26,7 +27,7 @@
             %%agilitycache_plugin_windows_update,
             %%agilitycache_plugin_file_hosters,
             %%agilitycache_plugin_erroneous_sites,
-            %%agilitycache_plugin_static_file 
+            %%agilitycache_plugin_static_file
               ]
           }
           ]

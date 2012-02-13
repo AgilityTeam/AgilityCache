@@ -55,7 +55,7 @@ init([]) ->
   ListenOpts = agilitycache_utils:get_app_env(agilitycache, listen, []),
   BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
   Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
-  %%error_logger:info_msg("ListenOpts ~p~n", [ListenOpts]),
+  %%lager:debug("ListenOpts ~p~n", [ListenOpts]),
   TransOpts = [
     {port, proplists:get_value(port, ListenOpts, 8080)}, 
     {backlog, proplists:get_value(backlog, ListenOpts, 128000)}, %% We don't care if we have logs of pending connections, we'll process them anyway 
@@ -66,9 +66,9 @@ init([]) ->
     {send_timeout_close, true}, %%... and therefore the connection should be closed
     {buffer, BufferSize}
     ],
-    error_logger:info_msg("TransOpts~p~n", [TransOpts]),
+    lager:debug("TransOpts~p~n", [TransOpts]),
     NbAcceptors = proplists:get_value(acceptors, ListenOpts),
-    error_logger:info_msg("NbAcceptors: ~p~n", [NbAcceptors]),
+    lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
     {ok, _} = cowboy:start_listener(Ref, NbAcceptors,
       agilitycache_tcp_transport, TransOpts,
       agilitycache_http_protocol, [{dispatch, Dispatch}]

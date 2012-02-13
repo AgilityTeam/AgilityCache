@@ -6,29 +6,33 @@
 %% FileId is a md5sum in binary format
 %% Devo aceitar mais de uma localização?
 find_file(FileId) ->
-  Paths = application:get_env(?APPLICATION, cache_dirs),
+  Paths = [ proplists:get_value(path, X) || X <- agilitycache_utils:get_app_env(?APPLICATION, cache_dirs, []) ],
+  lager:debug("Paths: ~p", [Paths]),
+  lager:debug("FileId: ~p", [FileId]),
   SubPath = get_subpath(FileId),
-  FilePaths = lists:map(fun(X) -> filename:join([X, SubPath]) end, Paths),
+  lager:debug("SubPath: ~p", [SubPath]),
+  FilePaths = [filename:join([X, SubPath]) || X <- Paths],
+  lager:debug("FilePaths: ~p", [FilePaths]),
   FoundPaths = [FileFound || FileFound <- FilePaths, filelib:is_regular(FileFound)],
   case FoundPaths of
     [] ->
       {error, notfound};
     Paths1 ->
-      erlang:hd(Paths1)
+      {ok, erlang:hd(Paths1)}
   end.
 
 
 get_best_filepath(FileId) ->
-  case agilitycache_path_chooser:get_best_path(application:get_env(?APPLICATION, cache_dirs)) of
+  case agilitycache_path_chooser:get_best_path(agilitycache_utils:get_app_env(?APPLICATION, cache_dirs, [])) of
     {error, Cause} ->
       {error, Cause};
     {ok, Path} ->
-      filename:join([Path, get_subpath(FileId)])
+      {ok, filename:join([Path, get_subpath(FileId)])}
   end.
 
 get_subpath(FileId) ->
-  HexFileId = list_to_binary(agilitycache_utils:hexstring(FileId)),
-  filename:join([binary:at(HexFileId, 1), binary:at(HexFileId, 20), HexFileId]).
+  HexFileId = agilitycache_utils:hexstring(FileId),
+  filename:join([io_lib:format("~c", [binary:at(HexFileId, 1)]), io_lib:format("~c", [binary:at(HexFileId, 20)]), HexFileId]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

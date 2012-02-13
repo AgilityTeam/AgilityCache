@@ -11,7 +11,7 @@ test:
 	    @$(REBAR) skip_deps=true eunit
 clean:
 	    @$(REBAR) clean
-			
+
 build-plt:
 	@$(DIALYZER) --build_plt --output_plt .agilitycache_dialyzer.plt \
 		--apps kernel stdlib sasl erts ssl \
@@ -31,7 +31,6 @@ docs:
 	@$(REBAR) doc
 
 generate: deps compile
-	@rm -rf rel/mynode
-	@$(REBAR) generate
+	@$(REBAR) generate -f
 
 .PHONY: all test clean deps docs

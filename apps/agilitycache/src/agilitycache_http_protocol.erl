@@ -21,15 +21,14 @@
 -include("include/http.hrl").
 
 -record(state, {
-    http_client = undefined :: agilitycache_http_client:http_client_state() | undefined,
-    http_server = undefined :: agilitycache_http_server:http_server_state() | undefined,
+    http_client :: agilitycache_http_client:http_client_state(),
+    http_server :: agilitycache_http_server:http_server_state(),
     listener :: pid(),
     transport :: module(),
     max_empty_lines = 5 :: integer(),
     timeout = 5000 :: timeout(),
     keepalive = both :: both | req | disabled,
-    keepalive_default_timeout = 300 :: non_neg_integer(),
-    cache_plugin = agilitycache_cache_plugin_default :: module()
+    keepalive_default_timeout = 300 :: non_neg_integer()
 	 }).
 %% API.
 
@@ -56,7 +55,7 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
              {buffer, BufferSize},
              {delay_send, true}
 				    ]),
-    %%error_logger:info_msg("ServerSocket buffer ~p", 
+    %%lager:debug("ServerSocket buffer ~p", 
     %%  [inet:getopts(ServerSocket, [delay_send])]),
     HttpServer = agilitycache_http_server:new(Transport, ServerSocket, Timeout, MaxEmptyLines),
     KeepAliveOpts = agilitycache_utils:get_app_env(agilitycache, keepalive, [{type, both}, {max_timeout, 300}]),
@@ -66,30 +65,30 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
 				listener=ListenerPid, keepalive = KeepAlive, keepalive_default_timeout = KeepAliveDefaultTimeout}).
 
 start_handle_request(#state{http_server=HttpServer} = State) ->
- %error_logger:info_msg("~p Nova requisição start_handle_request...~n", [self()]),
+ %lager:debug("~p Nova requisição start_handle_request...~n", [self()]),
   case agilitycache_http_server:read_request(HttpServer) of
     {ok, HttpServer0} ->
-      check_plugins(State#state{http_server=HttpServer0}, fun read_reply/1);
+      read_reply(State#state{http_server=HttpServer0});
     {error, Reason, HttpServer1} ->
       start_stop({error, Reason}, State#state{http_server=HttpServer1})
   end.
 
 start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
- %error_logger:info_msg("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
+ %lager:debug("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
   case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
     {ok, HttpServer0} ->
-      check_plugins(State#state{http_server=HttpServer0}, fun read_reply/1);
+      read_reply(State#state{http_server=HttpServer0});
     {error, Reason, HttpServer1} ->
       start_stop({error, Reason}, State#state{http_server=HttpServer1})
   end.
 
 start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
- %error_logger:info_msg("~p Nova requisição start_handle_both_keepalive_request...~n", [self()]),
+ %lager:debug("~p Nova requisição start_handle_both_keepalive_request...~n", [self()]),
   case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
     {ok, HttpServer0} ->
-      check_plugins(State#state{http_server=HttpServer0}, fun read_both_keepalive_reply/1);
+      read_both_keepalive_reply(State#state{http_server=HttpServer0});
     {error, closed, HttpServer1} ->
-      check_plugins(State#state{http_server=HttpServer1}, fun read_reply/1);
+      read_reply(State#state{http_server=HttpServer1});
     {error, Reason, HttpServer1} ->
       start_stop({error, Reason}, State#state{http_server=HttpServer1})
   end.
@@ -164,7 +163,7 @@ send_post(Length, State = #state{http_client=HttpClient, http_server=HttpServer}
 
 start_receive_reply(State = #state{http_client = HttpClient}) ->
   {ok, HttpClient0} = agilitycache_http_client:start_receive_reply(HttpClient),
-  check_cacheability(State#state{http_client=HttpClient0}).
+  start_send_reply(State#state{http_client=HttpClient0}).
 
 start_send_reply(State = #state{http_server=HttpServer, http_client=HttpClient}) ->
   {HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
@@ -206,7 +205,7 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
               {true, Remaining - Size}
           end
       end,
-      %%error_logger:info_msg("Ended: ~p, Remaining ~p, Size ~p, NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
+      %%lager:debug("Ended: ~p, Remaining ~p, Size ~p, NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
       case Ended of
         true ->
           case agilitycache_http_server:send_data(Data, HttpServer) of
@@ -237,7 +236,7 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
   end.
 
 start_stop(normal, State = #state{keepalive=disabled}) ->
- %error_logger:info_msg("~p Normal, keepalive disabled!~n", [self()]),
+ %lager:debug("~p Normal, keepalive disabled!~n", [self()]),
   do_stop(State);
 start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
     listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout}) ->
@@ -245,7 +244,7 @@ start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient
   {HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
   case {KeepAliveType, HttpReq#http_req.connection, HttpRep#http_rep.connection} of
     {both, keepalive, keepalive} ->
-     %error_logger:info_msg("~p Keepalive both!~n", [self()]),
+     %lager:debug("~p Keepalive both!~n", [self()]),
       ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, KeepAliveDefaultTimeout)*1000,
       KeepAliveTimeout = min(ReqKeepAliveTimeout, RepKeepAliveTimeout),
@@ -253,18 +252,18 @@ start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient
           timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, listener=ListenerPid,
           keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     {_, keepalive, close} ->
-     %error_logger:info_msg("~p Keepalive HttpReq!~n", [self()]),
+     %lager:debug("~p Keepalive HttpReq!~n", [self()]),
       do_stop_client(State),
       HttpServer1 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
       KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer1, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
           listener=ListenerPid, keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     _ ->
-     %error_logger:info_msg("~p Normal :( ~p!~n", [self(), HttpReq]),
+     %lager:debug("~p Normal :( ~p!~n", [self(), HttpReq]),
       do_stop(State)
   end;
 start_stop(_Reason, State) ->
- %error_logger:info_msg("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
+ %lager:debug("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
   do_stop(State).
 
 do_stop(State) ->
@@ -274,45 +273,13 @@ do_stop_server(_State = #state{http_server=undefined}) ->
   ok;
 do_stop_server(_State = #state{http_server=HttpServer}) ->
   %%unexpected(start_stop, State),
-  agilitycache_http_server:close(HttpServer),
-  ok.
+  agilitycache_http_server:close(HttpServer).
 do_stop_client(_State = #state{http_client=undefined}) ->
   ok;
 do_stop_client(_State = #state{http_client=HttpClient}) ->
-  agilitycache_http_client:close(HttpClient),
-  ok.
+  agilitycache_http_client:close(HttpClient).
 
-%%% ============================
-%%% Plugin logic
-%%% @todo: remover isto daqui? colocar em outro módulo?
-%%% ============================
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
 
-check_cacheability(State = #state{cache_plugin = Plugin, http_server=HttpServer, http_client=HttpClient}) ->
-  {HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-  {HttpRep, _HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-  Cacheable = Plugin:cacheable(HttpReq, HttpRep),
-  error_logger:info_msg("Plugin: ~p~n", [Plugin]),
-  error_logger:info_msg("HttpReq: ~p~n", [HttpReq]),
-  error_logger:info_msg("HttpRep: ~p~n", [HttpRep]),
-  error_logger:info_msg("Cacheable: ~p~n", [Cacheable]),
-  start_send_reply(State).
-
-check_plugins(State = #state{http_server=HttpServer}, Function) ->
-  Plugins = agilitycache_utils:get_app_env(plugins, [{cache, []}]),
-  CachePlugins = lists:append([proplists:get_value(cache, Plugins, []), [agilitycache_cache_plugin_default]]),
-  error_logger:info_msg("CachePlugins: ~p~n", [CachePlugins]),
-  {HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-  error_logger:info_msg("HttpReq: ~p~n", [HttpReq]),
-  InCharge = test_in_charge_plugins(CachePlugins, HttpReq, agilitycache_cache_plugin_default),
-  error_logger:info_msg("InCharge: ~p~n", [InCharge]),
-  Function(State#state{cache_plugin = InCharge}).
-
-test_in_charge_plugins([], _, Default) ->
-  Default;
-test_in_charge_plugins([Plugin | T], HttpReq, Default) ->
-  case Plugin:in_charge(HttpReq) of
-    true ->
-      Plugin;
-    false ->
-      test_in_charge_plugins(T, HttpReq, Default)
-  end.

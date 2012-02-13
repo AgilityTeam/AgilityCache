@@ -117,7 +117,7 @@ wait_keepalive_request(KeepAliveTimeout, State=#http_server_state{server_socket=
 
 %% @todo Use decode_packet options to limit length?
 start_parse_request(State=#http_server_state{server_buffer=Buffer}) ->
-  %error_logger:info_msg("~p Nova requisição...~n", [self()]),
+  %lager:debug("~p Nova requisição...~n", [self()]),
   case erlang:decode_packet(http_bin, Buffer, []) of
     {ok, Request, Rest} ->
       parse_request(Request, State#http_server_state{server_buffer=Rest});

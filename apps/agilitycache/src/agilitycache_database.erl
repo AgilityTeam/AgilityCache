@@ -144,7 +144,7 @@ find_file(FileId, Extension) ->
   end.
 
 get_subpath(FileId) ->
-  HexFileId = list_to_binary(agilitycache_utils:hexstring(FileId)),
+  HexFileId = agilitycache_utils:hexstring(FileId),
   filename:join([io_lib:format("~c", [binary:at(HexFileId, 1)]), io_lib:format("~c", [binary:at(HexFileId, 20)]), HexFileId]).
 
 parse_headers({http_header, _I, Field, _R, Value}, CachedFileInfo = #cached_file_info{ http_rep = Rep }, Rest) ->

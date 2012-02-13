@@ -17,4 +17,4 @@ get_app_env(App, Key, Default) ->
     end.
 
 hexstring(<<X:128/big-unsigned-integer>>) ->
-    lists:flatten(io_lib:format("~32.16.0B", [X])).
+  list_to_binary(lists:flatten(io_lib:format("~32.16.0B", [X]))).

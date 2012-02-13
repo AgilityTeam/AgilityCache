@@ -6,7 +6,7 @@
 %%
 %% Include files
 %%
--include("include/http.hrl").
+-include("include/cache.hrl"). %% superseeds http.hrl
 
 %%
 %% Exported Functions
@@ -15,12 +15,15 @@
 
 -record(http_client_state, {
 	  http_rep :: #http_rep{},
-	  client_socket :: inet:socket(),	  
+	  client_socket :: inet:socket(),
 	  transport :: module(),
-	  rep_empty_lines = 0 :: integer(),	  
+	  rep_empty_lines = 0 :: integer(),
 	  max_empty_lines :: integer(),
 	  timeout = 5000 :: timeout(),
-	  client_buffer = <<>> :: binary()	
+	  client_buffer = <<>> :: binary(),
+    cache_plugin = agilitycache_cache_plugin_default :: module(),
+    cache_status = undefined :: undefined | miss | hit,
+    cache_info = #cached_file_info{} :: #cached_file_info{}
 }).
 
 -opaque http_client_state() :: #http_client_state{}.
@@ -42,8 +45,12 @@ get_http_rep(#http_client_state{http_rep = HttpRep} = State) ->
 set_http_rep(HttpRep, State) ->
     State#http_client_state{http_rep = HttpRep}.
 
--spec start_request(HttpReq :: #http_req{}, State :: http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
-start_request(HttpReq, State=#http_client_state{transport = Transport, timeout = Timeout}) ->
+-spec start_request(#http_req{}, http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
+start_request(HttpReq, State) ->
+  check_plugins(HttpReq, State, fun start_connect/2).
+
+-spec start_connect(#http_req{}, http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
+start_connect(HttpReq, State=#http_client_state{transport = Transport, timeout = Timeout}) ->
   {RawHost, HttpReq0} = agilitycache_http_req:raw_host(Transport, undefined, HttpReq), %% undefined no lugar do socket é seguro neste caso!
   {Port, HttpReq1} = agilitycache_http_req:port(Transport, undefined, HttpReq0),
   BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
@@ -65,7 +72,7 @@ start_request(HttpReq, State=#http_client_state{transport = Transport, timeout =
 start_keepalive_request(_HttpReq, State = #http_client_state{client_socket = undefined}) ->
     {error, invalid_socket, State};
 start_keepalive_request(HttpReq, State) ->
-  start_send_request(HttpReq, State).
+  check_plugins(HttpReq, State, fun start_send_request/2).
 
 -spec start_receive_reply(http_client_state()) -> {ok, http_client_state()} | {error, any(), http_client_state()}.
 start_receive_reply(State) ->
@@ -113,9 +120,11 @@ close(State = #http_client_state{transport=Transport, client_socket=Socket}) ->
 %%
 
 start_send_request(HttpReq, State = #http_client_state{client_socket=Socket, transport=Transport}) ->
-  %%error_logger:info_msg("ClientSocket buffer ~p,~p,~p", 
+  %%lager:debug("ClientSocket buffer ~p,~p,~p",
   %%        [inet:getopts(Socket, [buffer]), inet:getopts(Socket, [recbuf]), inet:getopts(Socket, [sndbuf]) ]),
   Packet = agilitycache_http_req:request_head(HttpReq),
+  lager:debug("Packet: ~p~n", [Packet]),
+  lager:debug("HttpReq: ~p~n", [HttpReq]),
   case Transport:send(Socket, Packet) of
     ok ->
       {ok, HttpReq, State};
@@ -197,4 +206,79 @@ parse_reply_header({http_error, <<"\n">>}, State=#http_client_state{rep_empty_li
 parse_reply_header({http_error, _Bin}, State) ->
   {error, {http_error, 500}, State}.
 
+%%% ============================
+%%% Plugin logic
+%%% @todo: remover isto daqui? colocar em outro módulo?
+%%% ============================
+
+check_cacheability(HttpReq, _State = #http_client_state{http_rep=HttpRep, cache_plugin = Plugin}) ->
+  Cacheable = Plugin:cacheable(HttpReq, HttpRep),
+  lager:debug("Plugin: ~p~n", [Plugin]),
+  lager:debug("HttpReq: ~p~n", [HttpReq]),
+  lager:debug("HttpRep: ~p~n", [HttpRep]),
+  lager:debug("Cacheable: ~p~n", [Cacheable]),
+  timer:sleep(infinity).
+
+check_pre_cacheability(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
+  Cacheable = Plugin:cacheable(HttpReq),
+  lager:debug("Plugin: ~p~n", [Plugin]),
+  lager:debug("HttpReq: ~p~n", [HttpReq]),
+  lager:debug("Cacheable: ~p~n", [Cacheable]),
+  case Cacheable of
+    true ->
+      %% Hit? checar database
+      check_hit(HttpReq, State, Fun);
+    false ->
+      lager:debug("Miss no_cache"),
+      Fun(HttpReq, State)
+  end.
+
+
+check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
+  FileId = Plugin:file_id(HttpReq),
+  lager:debug("FileId: ~p <-> ~p~n", [agilitycache_utils:hexstring(FileId), FileId]),
+  case agilitycache_cache_dir:find_file(FileId) of
+    {error, _} ->
+      lager:debug("Cache Miss"),
+      Fun(HttpReq, State#http_client_state{cache_status = miss});
+    {ok, Path} ->
+      case agilitycache_database:read_preliminar_info(FileId, #cached_file_info{}) of
+        {ok, CachedFileInfo0 = #cached_file_info{max_age = MaxAge0}} ->
+          MaxAge = calendar:datetime_to_gregorian_seconds(MaxAge0),
+          Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+          case Now < MaxAge of
+            true ->
+              lager:debug("Cache Hit: ~p", [Path]),
+              lager:debug("MaxAge: ~p", [MaxAge]),
+              Fun(HttpReq, State#http_client_state{cache_status = hit, cache_info = CachedFileInfo0});
+            false ->
+              %% Expired
+              %% Não manusear por enquanto
+              lager:debug("Expired!, MaxAge: ~p", [MaxAge]),
+              Fun(HttpReq, State#http_client_state{cache_status = undefined})
+          end;
+        {error, _} = Z ->
+          lager:debug("Database error: ~p", [Z]),
+          Fun(HttpReq, State#http_client_state{cache_status = undefined})
+      end
+  end.
+
+check_plugins(HttpReq, State, Fun) ->
+  Plugins = agilitycache_utils:get_app_env(plugins, [{cache, []}]),
+  CachePlugins = lists:append([proplists:get_value(cache, Plugins, []), [agilitycache_cache_plugin_default]]),
+  lager:debug("CachePlugins: ~p~n", [CachePlugins]),
+  lager:debug("HttpReq: ~p~n", [HttpReq]),
+  InCharge = test_in_charge_plugins(CachePlugins, HttpReq, agilitycache_cache_plugin_default),
+  lager:debug("InCharge: ~p~n", [InCharge]),
+  check_pre_cacheability(HttpReq, State#http_client_state{cache_plugin = InCharge}, Fun).
+
+test_in_charge_plugins([], _, Default) ->
+  Default;
+test_in_charge_plugins([Plugin | T], HttpReq, Default) ->
+  case Plugin:in_charge(HttpReq) of
+    true ->
+      Plugin;
+    false ->
+      test_in_charge_plugins(T, HttpReq, Default)
+  end.
 
