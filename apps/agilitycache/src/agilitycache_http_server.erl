@@ -11,7 +11,7 @@
 %%
 %% Exported Functions
 %%
--export([new/4, read_request/1, read_keepalive_request/2, get_body/1, send_data/2, get_http_req/1, set_http_req/2, close/1]).
+-export([new/4, read_request/1, read_keepalive_request/2, get_body/1, send_data/2, get_http_req/1, set_http_req/2, stop/2]).
 
 -record(http_server_state, {
 	  http_req :: #http_req{},
@@ -78,6 +78,16 @@ send_data(Data, State = #http_server_state { transport = Transport, server_socke
       {error, Reason, State}
   end.
 
+-spec stop(keepalive | close, http_server_state()) -> {ok, http_server_state()}.
+stop(keepalive, State) ->
+  {ok, State};
+stop(close, State) ->
+  close(State).
+
+%%
+%% Local Functions
+%%
+
 -spec close(http_server_state()) -> {ok, http_server_state()}.
 close(State = #http_server_state{transport=Transport, server_socket=Socket}) ->
   case Socket of
@@ -87,11 +97,6 @@ close(State = #http_server_state{transport=Transport, server_socket=Socket}) ->
       Transport:close(Socket),
       {ok, State#http_server_state{server_socket=Socket}}
   end.
-
-
-%%
-%% Local Functions
-%%
 
 wait_request(State=#http_server_state{server_socket=Socket, transport=Transport,
     timeout=T, server_buffer=Buffer}) ->

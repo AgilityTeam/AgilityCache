@@ -49,13 +49,13 @@ init(ListenerPid, ServerSocket, Transport, Opts) ->
     cowboy:accept_ack(ListenerPid),
     BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
     Transport:setopts(ServerSocket, [
-				     %{nodelay, true}%, %% We want to be informed even when packages are small             
+				     %{nodelay, true}%, %% We want to be informed even when packages are small
 				     {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
 				     {send_timeout_close, true}, %%... and therefore the connection should be closed
              {buffer, BufferSize},
              {delay_send, true}
 				    ]),
-    %%lager:debug("ServerSocket buffer ~p", 
+    %%lager:debug("ServerSocket buffer ~p",
     %%  [inet:getopts(ServerSocket, [delay_send])]),
     HttpServer = agilitycache_http_server:new(Transport, ServerSocket, Timeout, MaxEmptyLines),
     KeepAliveOpts = agilitycache_utils:get_app_env(agilitycache, keepalive, [{type, both}, {max_timeout, 300}]),
@@ -118,7 +118,7 @@ read_reply(#state{http_server=HttpServer, transport=Transport, timeout=Timeout, 
   end.
 
 start_send_post(State = #state{http_server=HttpServer}) ->
-  {HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),  
+  {HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
   {Length, HttpReq2} = agilitycache_http_req:content_length(undefined, undefined, HttpReq),
   HttpServer1 = agilitycache_http_server:set_http_req(HttpReq2, HttpServer0),
   State2 = State#state{http_server=HttpServer1},
@@ -140,7 +140,7 @@ send_post(Length, State = #state{http_client=HttpClient, http_server=HttpServer}
     0 ->
       case agilitycache_http_client:send_data(Data, HttpClient) of
         {ok, HttpClient0} ->
-          start_receive_reply(State#state{http_client=HttpClient0, http_server=HttpServer0});                    
+          start_receive_reply(State#state{http_client=HttpClient0, http_server=HttpServer0});
         {error, closed, HttpClient0} ->
           %% @todo Eu devia alertar sobre isso, não?
           start_stop(normal, State#state{http_client=HttpClient0, http_server=HttpServer0});
@@ -149,8 +149,8 @@ send_post(Length, State = #state{http_client=HttpClient, http_server=HttpServer}
       end;
     _ when Restant > 0 ->
       case agilitycache_http_client:send_data(Data, HttpClient) of
-        {ok, HttpClient0} ->      
-          send_post(Restant, State#state{http_client=HttpClient0, http_server=HttpServer0});                    
+        {ok, HttpClient0} ->
+          send_post(Restant, State#state{http_client=HttpClient0, http_server=HttpServer0});
         {error, closed, HttpClient0} ->
           %% @todo Eu devia alertar sobre isso, não?
           start_stop(normal, State#state{http_client=HttpClient0, http_server=HttpServer0});
@@ -171,7 +171,7 @@ start_send_reply(State = #state{http_server=HttpServer, http_client=HttpClient})
   {Headers, Rep3} = agilitycache_http_rep:headers(Rep2),
   {Length, Rep4} = agilitycache_http_rep:content_length(Rep3),
   {Req, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-  case agilitycache_http_req:start_reply(HttpServer0, Status, Headers, Length, Req) of 
+  case agilitycache_http_req:start_reply(HttpServer0, Status, Headers, Length, Req) of
     {ok, Req2, HttpServer1} ->
       Remaining = case Length of
         undefined -> undefined;
@@ -193,12 +193,12 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
     {ok, Data, HttpClient0} ->
       Size = iolist_size(Data),
       {Ended, NewRemaining} = case {Remaining, Size} of
-        {_, 0} -> 
+        {_, 0} ->
           {true, Remaining};
-        {undefined, _} -> 
+        {undefined, _} ->
           {false, Remaining};
         _ when is_integer(Remaining) ->
-          if 
+          if
             Remaining - Size > 0 ->
               {false, Remaining - Size};
             Remaining - Size == 0 ->
@@ -219,7 +219,7 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
           end;
         false ->
           case agilitycache_http_server:send_data(Data, HttpServer) of
-            {ok, HttpServer0} ->      
+            {ok, HttpServer0} ->
               send_reply(NewRemaining, State#state{http_server=HttpServer0, http_client=HttpClient0});
             {error, closed, HttpServer0} ->
               %% @todo Eu devia alertar sobre isso, não?
@@ -228,7 +228,7 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
               start_stop({error, Reason}, State#state{http_server=HttpServer0, http_client=HttpClient0})
           end
       end;
-    {error, closed, HttpClient0} -> 
+    {error, closed, HttpClient0} ->
       start_stop(normal, State#state{http_client=HttpClient0});
     {error, timeout, HttpClient0} ->
       %% start_stop({error, <<"Remote Server timeout">>}, State) %% Não quero reportar sempre que o servidor falhar conosco...
@@ -236,30 +236,33 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
   end.
 
 start_stop(normal, State = #state{keepalive=disabled}) ->
- %lager:debug("~p Normal, keepalive disabled!~n", [self()]),
+  lager:debug("Normal, keepalive disabled"),
   do_stop(State);
 start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-    listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout}) ->
+                                  listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout}) ->
   {HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
   {HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
   case {KeepAliveType, HttpReq#http_req.connection, HttpRep#http_rep.connection} of
     {both, keepalive, keepalive} ->
-     %lager:debug("~p Keepalive both!~n", [self()]),
+      lager:debug("Keepalive both"),
       ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, KeepAliveDefaultTimeout)*1000,
       KeepAliveTimeout = min(ReqKeepAliveTimeout, RepKeepAliveTimeout),
-      start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer0, http_client=HttpClient0, 
-          timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, listener=ListenerPid,
-          keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
+      do_stop_server(keepalive, State),
+      do_stop_client(keepalive, State),
+      start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer0, http_client=HttpClient0,
+                                                                   timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, listener=ListenerPid,
+                                                                   keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     {_, keepalive, close} ->
-     %lager:debug("~p Keepalive HttpReq!~n", [self()]),
-      do_stop_client(State),
+      lager:debug("Keepalive HttpServer"),
+      do_stop_server(keepalive, State),
+      do_stop_client(close, State),
       HttpServer1 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
       KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
       start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer1, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-          listener=ListenerPid, keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
+                                                                  listener=ListenerPid, keepalive=true, keepalive_default_timeout=KeepAliveDefaultTimeout});
     _ ->
-     %lager:debug("~p Normal :( ~p!~n", [self(), HttpReq]),
+      lager:debug("Normal"),
       do_stop(State)
   end;
 start_stop(_Reason, State) ->
@@ -267,17 +270,17 @@ start_stop(_Reason, State) ->
   do_stop(State).
 
 do_stop(State) ->
-  do_stop_client(State),
-  do_stop_server(State).
-do_stop_server(_State = #state{http_server=undefined}) ->
+  do_stop_client(close, State),
+  do_stop_server(close, State).
+do_stop_server(_Type, _State = #state{http_server=undefined}) ->
   ok;
-do_stop_server(_State = #state{http_server=HttpServer}) ->
+do_stop_server(Type, _State = #state{http_server=HttpServer}) ->
   %%unexpected(start_stop, State),
-  agilitycache_http_server:close(HttpServer).
-do_stop_client(_State = #state{http_client=undefined}) ->
+  agilitycache_http_server:stop(Type, HttpServer).
+do_stop_client(_Type, _State = #state{http_client=undefined}) ->
   ok;
-do_stop_client(_State = #state{http_client=HttpClient}) ->
-  agilitycache_http_client:close(HttpClient).
+do_stop_client(Type, _State = #state{http_client=HttpClient}) ->
+  agilitycache_http_client:stop(Type, HttpClient).
 
 %%%===================================================================
 %%% Internal functions
