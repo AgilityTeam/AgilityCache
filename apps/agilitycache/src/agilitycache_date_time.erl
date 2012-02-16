@@ -1,5 +1,5 @@
 -module(agilitycache_date_time).
--export([parse_simple_string/1, generate_simple_string/1]).
+-export([parse_simple_string/1, generate_simple_string/1, convert_request_date/1, generate_rfc1123_date/1]).
 
 -spec parse_simple_string(binary()) -> {ok, calendar:datetime()} | {error, any()}.
 parse_simple_string(<<Year:4/binary, "-", Month:3/binary,   "-", Day:2/binary,
@@ -51,9 +51,9 @@ month(_)          -> erlang:error(invalid_month).
 generate_simple_string({{Year, Month, Day}, {Hour, Minute, Second}}) ->
   try {generate_date_string(Year, Month, Day),
        generate_time_string(Hour, Minute, Second) }
-  of 
+  of
     {Date, Time} ->
-      <<Date/binary, " ", Time/binary>>
+      {ok, <<Date/binary, " ", Time/binary>>}
   catch
     error:Error ->
       {error, Error}
@@ -63,14 +63,14 @@ generate_simple_string({{Year, Month, Day}, {Hour, Minute, Second}}) ->
 generate_date_string(Year, Month, Day) ->
   BYear = list_to_binary(integer_to_list(Year)),
   BMonth = month2(Month),
-  BDay = list_to_binary(integer_to_list(Day)),
+  BDay = pad_int(Day),
   <<BYear/binary, "-", BMonth/binary, "-", BDay/binary>>.
 
 -spec generate_time_string(0..23, 0..59, 0..59) -> binary().
 generate_time_string(Hour, Minute, Second) ->
-  BHour = list_to_binary(integer_to_list(Hour)),
-  BMinute = list_to_binary(integer_to_list(Minute)),
-  BSecond = list_to_binary(integer_to_list(Second)),
+  BHour = pad_int(Hour),
+  BMinute = pad_int(Minute),
+  BSecond = pad_int(Second),
   <<BHour/binary, ":", BMinute/binary, ":", BSecond/binary>>.
 
 -spec month2(1..12) -> binary() | no_return().
@@ -87,6 +87,102 @@ month2(10)  -> <<"Oct">>;
 month2(11)  -> <<"Nov">>;
 month2(12)  -> <<"Dec">>;
 month2(_) -> erlang:error(invalid_month).
+
+%% From httpd_util.erl, ported to use binaries
+
+-spec convert_request_date(binary()) -> {ok, calendar:datetime()} | {error, any()}.
+convert_request_date(<<_:3/binary, DateType:1/binary, _/binary>> = Date) ->
+  Func=case DateType of
+    <<",">> ->
+      fun convert_rfc1123_date/1;
+    <<" ">>  ->
+      fun convert_ascii_date/1;
+    _ ->
+      fun convert_rfc850_date/1
+  end,
+  try
+    Func(Date)
+  of
+    {ok, _} = Date2 ->
+      Date2
+  catch
+    error:_Error ->
+      {error, bad_date}
+  end.
+convert_rfc850_date(DateStr) ->
+  [_WeekDay,Date,Time,_TimeZone|_Rest] = binary:split(DateStr, <<" ">>, [global]),
+    convert_rfc850_date(Date,Time).
+
+convert_rfc850_date(<<Day0:2/binary, "-", Month0:3/binary, "-", Year0:2/binary>>, <<Hour0:2/binary, ":", Minutes0:2/binary, ":", Seconds0:2/binary>>)->
+    Year=list_to_integer(lists:flatten([50,48,binary_to_list(Year0)])),
+    Day=list_to_integer(binary_to_list(Day0)),
+    Month = month(Month0),
+    Hour=list_to_integer(binary_to_list(Hour0)),
+    Min=list_to_integer(binary_to_list(Minutes0)),
+    Sec=list_to_integer(binary_to_list(Seconds0)),
+    {ok,{{Year,Month,Day},{Hour,Min,Sec}}}.
+
+convert_ascii_date(<<_:3/binary, " ", Month0:3/binary, " ", Day0:2/binary, " ", Hour0:2/binary, ":", Minutes0:2/binary, ":", Seconds0:2/binary, " ", Year0:4/binary>>)->
+  Year=list_to_integer(binary_to_list(Year0)),
+  Day=case Day0 of
+    <<" ", Day1/binary>> ->
+      list_to_integer(binary_to_list(Day1));
+    _->
+      list_to_integer(binary_to_list(Day0))
+  end,
+    Month = month(Month0),
+    Hour=list_to_integer(binary_to_list(Hour0)),
+    Min=list_to_integer(binary_to_list(Minutes0)),
+    Sec=list_to_integer(binary_to_list(Seconds0)),
+    {ok,{{Year,Month,Day},{Hour,Min,Sec}}}.
+
+convert_rfc1123_date(<<_:3/binary, ", ",
+                       Day0:2/binary, " ",
+                       Month0:3/binary, " ",
+                       Year0:4/binary, " ",
+                       Hour0:2/binary, ":",
+                       Minutes0:2/binary, ":",
+                       Seconds0:2/binary,
+                       _/binary>>) ->
+  Year=list_to_integer(binary_to_list(Year0)),
+  Day=list_to_integer(binary_to_list(Day0)),
+  Month = month(Month0),
+  Hour=list_to_integer(binary_to_list(Hour0)),
+  Min=list_to_integer(binary_to_list(Minutes0)),
+  Sec=list_to_integer(binary_to_list(Seconds0)),
+  {ok,{{Year,Month,Day},{Hour,Min,Sec}}}.
+
+% Wed, 15 Feb 2012 16:27:3b GMT
+
+-spec generate_rfc1123_date(calendar:datetime()) -> binary().
+generate_rfc1123_date({{Year, Month, Day} = DoW, {Hour, Minutes, Seconds}}) ->
+  DayName = day(calendar:day_of_the_week(DoW)),
+  BYear = list_to_binary(integer_to_list(Year)),
+  BMonth = month2(Month),
+  BDay = pad_int(Day),
+  BHour = pad_int(Hour),
+  BMinutes = pad_int(Minutes),
+  BSeconds = pad_int(Seconds),
+  <<DayName/binary, ", ", BDay/binary, " ", BMonth/binary, " ",
+    BYear/binary, " ", BHour/binary, ":", BMinutes/binary, ":", BSeconds/binary, " GMT">>.
+
+-spec day(1..7) -> binary() | no_return().
+day(1) -> <<"Mon">>;
+day(2) -> <<"Tue">>;
+day(3) -> <<"Wed">>;
+day(4) -> <<"Thu">>;
+day(5) -> <<"Fri">>;
+day(6) -> <<"Sat">>;
+day(7) -> <<"Sun">>;
+day(_) -> erlang:error(invalid_day).
+
+%% From cowboy_clock.erl
+-spec pad_int(0..59) -> binary().
+pad_int(X) when X < 10 ->
+    << $0, ($0 + X) >>;
+pad_int(X) ->
+    list_to_binary(integer_to_list(X)).
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
