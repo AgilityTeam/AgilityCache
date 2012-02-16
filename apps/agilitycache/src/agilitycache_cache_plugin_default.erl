@@ -8,7 +8,7 @@
 		cacheable/1,
 		cacheable/2,
 		file_id/1,
-		expires/3
+		expires/2
 	]).
 
 name() ->
@@ -28,5 +28,5 @@ file_id(_HttpReq) ->
 	erlang:error(not_implemented).
 
 %% Nem isto
-expires(_DateTime, _HttpReq, _HttpRep) ->
+expires(_HttpReq, _HttpRep) ->
 	erlang:error(not_implemented).
