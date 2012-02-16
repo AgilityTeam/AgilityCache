@@ -6,12 +6,12 @@
 %%
 %% Include files
 %%
--include("include/cache.hrl"). %% superseeds http.hrl
+-include("cache.hrl"). %% superseeds http.hrl
 
 %%
 %% Exported Functions
 %%
--export([new/3, start_request/2, start_keepalive_request/2, start_receive_reply/1, get_http_rep/1, set_http_rep/2, get_body/1, send_data/2, close/1]).
+-export([new/3, start_request/2, start_keepalive_request/2, start_receive_reply/1, get_http_rep/1, set_http_rep/2, get_body/1, send_data/2, stop/2]).
 
 -record(http_client_state, {
 	  http_rep :: #http_rep{},
@@ -23,7 +23,11 @@
 	  client_buffer = <<>> :: binary(),
     cache_plugin = agilitycache_cache_plugin_default :: module(),
     cache_status = undefined :: undefined | miss | hit,
-    cache_info = #cached_file_info{} :: #cached_file_info{}
+    cache_id = <<>> :: binary(),
+    cache_info = #cached_file_info{} :: #cached_file_info{},
+    cache_file_path = <<>> :: binary(),
+    cache_file_helper = undefined :: pid(),
+    cache_http_req :: #http_req{} %% Only set and used when cache_status = miss
 }).
 
 -opaque http_client_state() :: #http_client_state{}.
@@ -75,15 +79,44 @@ start_keepalive_request(HttpReq, State) ->
   check_plugins(HttpReq, State, fun start_send_request/2).
 
 -spec start_receive_reply(http_client_state()) -> {ok, http_client_state()} | {error, any(), http_client_state()}.
+start_receive_reply(State = #http_client_state{cache_status = hit}) ->
+  lager:debug("Cache Hit"),
+  %% @todo ler resposta do database
+  start_parse_reply(State);
 start_receive_reply(State) ->
   start_parse_reply(State).
 
 -spec get_body(http_client_state()) -> {ok, iolist(), http_client_state()} | {error, any(), http_client_state()}.
+
+%% Cache Miss functions
+
+%% Empty buffer
+get_body(State=#http_client_state{
+      client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>, cache_status=miss, cache_file_helper=FileHelper})->
+  case Transport:recv(Socket, 0, T) of
+    {ok, Data} ->
+      agilitycache_http_client_miss_helper:write(Data, FileHelper),
+      {ok, Data, State};
+      {error, timeout} ->
+        {error, timeout, State};
+      {error, closed} ->
+        {error, closed, State};
+      Other ->
+        {error, Other, State}
+    end;
+%% Non empty buffer
+get_body(State=#http_client_state{client_buffer=Buffer, cache_status=miss, cache_file_helper=FileHelper})->
+  agilitycache_http_client_miss_helper:write(Buffer, FileHelper),
+  {ok, Buffer, State#http_client_state{client_buffer = <<>>}};
+
+%% No cache functions
+
 %% Empty buffer
 get_body(State=#http_client_state{
       client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>})->
   case Transport:recv(Socket, 0, T) of
     {ok, Data} ->
+
       {ok, Data, State};
       {error, timeout} ->
         {error, timeout, State};
@@ -105,6 +138,22 @@ send_data(Data, State = #http_client_state { transport = Transport, client_socke
       {error, Reason, State}
   end.
 
+-spec stop(keepalive | close, http_client_state()) -> {ok, http_client_state()}.
+stop(keepalive, State=#http_client_state{cache_status=miss, cache_file_helper=FileHelper}) ->
+  agilitycache_http_client_miss_helper:close(FileHelper),
+  {ok, State#http_client_state{cache_status=undefined, cache_file_helper=undefined}};
+stop(close, State=#http_client_state{cache_status=miss, cache_file_helper=FileHelper}) ->
+  agilitycache_http_client_miss_helper:close(FileHelper),
+  close(State);
+stop(keepalive, State) ->
+  {ok, State};
+stop(close, State) ->
+  close(State).
+
+%%
+%% Local Functions
+%%
+
 -spec close(http_client_state()) -> {ok, http_client_state()}.
 close(State = #http_client_state{transport=Transport, client_socket=Socket}) ->
   case Socket of
@@ -114,10 +163,6 @@ close(State = #http_client_state{transport=Transport, client_socket=Socket}) ->
       Transport:close(Socket),
       {ok, State#http_client_state{client_socket=Socket}}
   end.
-
-%%
-%% Local Functions
-%%
 
 start_send_request(HttpReq, State = #http_client_state{client_socket=Socket, transport=Transport}) ->
   %%lager:debug("ClientSocket buffer ~p,~p,~p",
@@ -192,6 +237,10 @@ parse_reply_header({http_header, _I, Field, _R, Value}, State=#http_client_state
   Field2 = agilitycache_http_protocol_parser:format_header(Field),
   start_parse_reply_header(
     State#http_client_state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
+%% Cache Miss Request
+parse_reply_header(http_eoh, State = #http_client_state{cache_status = miss}) ->
+  check_cacheability(State);
+%% Normal request
 parse_reply_header(http_eoh, State) ->
   %%  OK, esperar pedido do cliente.
   {ok, State};
@@ -211,13 +260,28 @@ parse_reply_header({http_error, _Bin}, State) ->
 %%% @todo: remover isto daqui? colocar em outro módulo?
 %%% ============================
 
-check_cacheability(HttpReq, _State = #http_client_state{http_rep=HttpRep, cache_plugin = Plugin}) ->
+%% Vou limpar o cache_http_req, pois só uso aqui
+check_cacheability(State = #http_client_state{http_rep=HttpRep, cache_plugin = Plugin, cache_http_req = HttpReq, cache_id = FileId}) ->
   Cacheable = Plugin:cacheable(HttpReq, HttpRep),
   lager:debug("Plugin: ~p~n", [Plugin]),
   lager:debug("HttpReq: ~p~n", [HttpReq]),
   lager:debug("HttpRep: ~p~n", [HttpRep]),
   lager:debug("Cacheable: ~p~n", [Cacheable]),
-  timer:sleep(infinity).
+  case Cacheable of
+    true ->
+      lager:debug("Cache Miss cacheable"),
+      MaxAge = Plugin:expires(HttpReq, HttpRep),
+      lager:debug("MaxAge: ~p", [MaxAge]),
+      %% I'll set age after... put age = MaxAge here to simplify
+      CachedFileInfo = #cached_file_info{ http_rep = HttpRep, max_age = MaxAge, age = MaxAge },
+      agilitycache_database:write_info(FileId, CachedFileInfo),
+      {ok, Helper} = agilitycache_http_client_miss_helper:start(),
+      agilitycache_http_client_miss_helper:open(FileId, Helper),
+      {ok, State#http_client_state{cache_http_req = undefined, cache_info = CachedFileInfo, cache_file_helper = Helper}};
+    false ->
+      lager:debug("Miss no_cache after cacheability"),
+      {ok, State#http_client_state{cache_status = undefined, cache_http_req = undefined}}
+  end.
 
 check_pre_cacheability(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
   Cacheable = Plugin:cacheable(HttpReq),
@@ -240,7 +304,7 @@ check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
   case agilitycache_cache_dir:find_file(FileId) of
     {error, _} ->
       lager:debug("Cache Miss"),
-      Fun(HttpReq, State#http_client_state{cache_status = miss});
+      Fun(HttpReq, State#http_client_state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
     {ok, Path} ->
       case agilitycache_database:read_preliminar_info(FileId, #cached_file_info{}) of
         {ok, CachedFileInfo0 = #cached_file_info{max_age = MaxAge0}} ->
@@ -250,12 +314,13 @@ check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
             true ->
               lager:debug("Cache Hit: ~p", [Path]),
               lager:debug("MaxAge: ~p", [MaxAge]),
-              Fun(HttpReq, State#http_client_state{cache_status = hit, cache_info = CachedFileInfo0});
+              Fun(HttpReq, State#http_client_state{cache_status = hit, cache_info = CachedFileInfo0, cache_id = FileId, cache_file_path = Path});
             false ->
               %% Expired
               %% Não manusear por enquanto
               lager:debug("Expired!, MaxAge: ~p", [MaxAge]),
-              Fun(HttpReq, State#http_client_state{cache_status = undefined})
+              %%Fun(HttpReq, State#http_client_state{cache_status = undefined})
+              Fun(HttpReq, State#http_client_state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId})
           end;
         {error, _} = Z ->
           lager:debug("Database error: ~p", [Z]),
