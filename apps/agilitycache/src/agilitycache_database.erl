@@ -1,6 +1,6 @@
 -module(agilitycache_database).
 
--include("include/cache.hrl").
+-include("cache.hrl").
 
 -export([read_cached_file_info/3,
          write_cached_file_info/3,
@@ -57,6 +57,7 @@ write_cached_file_info(FileId, Info, CachedFileInfo) ->
       SubPath = get_subpath(FileId),
       filename:join([BestPath, SubPath, Info])
   end,
+  lager:debug("Path: ~p", [Path]),
   filelib:ensure_dir(Path),
   Data = generate_data(Info, CachedFileInfo),
   case file:write_file(Path, Data) of
@@ -78,11 +79,21 @@ write_info(FileId, CachedFileInfo) ->
 %%%===================================================================
 
 generate_data(<<"headers">>, #cached_file_info { http_rep = #http_rep { headers = Headers } }) ->
-  Headers0 = [<< Key/binary, ": ", Value/binary, "\r\n" >> || {Key, Value} <- Headers],
+  lager:debug("Headers: ~p", [Headers]),
+  Headers0 = [begin
+              BKey = agilitycache_http_protocol_parser:header_to_binary(Key),
+              [ BKey, ": ", Value, "\r\n" ]
+              end || {Key, Value} <- Headers],
+  lager:debug("Headers0: ~p", [Headers0]),
   Headers0;
 
+generate_data(<<"status_code">>, #cached_file_info { http_rep = #http_rep { status = Status } })
+              when is_integer(Status) ->
+  lager:debug("Status: ~p", [Status]),
+  list_to_binary(integer_to_list(Status));
 generate_data(<<"status_code">>, #cached_file_info { http_rep = #http_rep { status = Status } }) ->
-  integer_to_list(list_to_binary(Status));
+  lager:debug("Status: ~p", [Status]),
+  Status;
 
 generate_data(<<"max_age">>, #cached_file_info { max_age = MaxAge } ) ->
   {ok, MaxAge0} = agilitycache_date_time:generate_simple_string(MaxAge),
