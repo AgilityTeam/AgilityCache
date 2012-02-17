@@ -1,0 +1,11 @@
+{application, agilitycache_plugins,
+  [
+    {description, "Plugins for AgilityCache"},
+    {vsn, "3.0.0"},
+    {applications, [
+        kernel,
+        stdlib,
+        lager
+      ]}
+  ]
+}.
