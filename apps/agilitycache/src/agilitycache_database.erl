@@ -158,6 +158,12 @@ get_subpath(FileId) ->
   HexFileId = agilitycache_utils:hexstring(FileId),
   filename:join([io_lib:format("~c", [binary:at(HexFileId, 1)]), io_lib:format("~c", [binary:at(HexFileId, 20)]), HexFileId]).
 
+%% Desabilita keepalive
+parse_headers({http_header, _I, 'Connection', _R, _Connection}, CachedFileInfo = #cached_file_info{ http_rep = Rep }, Rest) ->
+  ConnAtom = close,
+  decode_headers(Rest, CachedFileInfo#cached_file_info{ http_rep =
+                                                       Rep#http_rep{connection=ConnAtom,
+                                                                    headers=[{'Connection', <<"close">>}|Rep#http_rep.headers]}});
 parse_headers({http_header, _I, Field, _R, Value}, CachedFileInfo = #cached_file_info{ http_rep = Rep }, Rest) ->
   Field2 = agilitycache_http_protocol_parser:format_header(Field),
   Rep2 = Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]},
