@@ -20,7 +20,7 @@
 	 response_head/4
 	]). %% Misc API.
 
--include("include/http.hrl").
+-include("http.hrl").
 
 %% Request API.
 
@@ -39,7 +39,7 @@ version(Rep) ->
     {Rep#http_rep.version, Rep}.
 
 %% @doc Return the peer address and port number of the remote host.
-%%-spec peer(pid(), #http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+-spec peer(module(), gen_tcp:socket(), #http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
 peer(Transport, Socket, Rep=#http_rep{peer=undefined}) ->
     {ok, Peer} = Transport:peername(Socket),
     {Peer, Rep#http_rep{peer=Peer}};
@@ -71,7 +71,7 @@ content_length(Rep=#http_rep{content_length=undefined}) ->
     {Length, Rep2} = header('Content-Length', Rep),
     {Length, Rep2#http_rep{content_length=Length}};
 content_length(Rep) ->
-    {Rep#http_rep.content_length, Rep}.	
+    {Rep#http_rep.content_length, Rep}.
 
 %% @equiv cookie(Name, Rep, undefined)
 -spec cookie(binary(), #http_rep{})
@@ -121,16 +121,6 @@ cookies(Rep=#http_rep{cookies=Cookies}) ->
 compact(Rep) ->
     Rep#http_rep{headers=[]}.
 
-%% Internal.
--include_lib("eunit/include/eunit.hrl").
-
--spec parse_qs(binary()) -> list({binary(), binary() | true}).
-parse_qs(<<>>) ->
-    [];
-parse_qs(Qs) ->
-    URLDecode = fun(Bin) -> cowboy_http:urldecode(Bin, crash) end,
-    cowboy_http_req:parse_qs(Qs, URLDecode).
-
 -spec response_head(http_version(), http_status(), http_headers(), http_headers()) -> iolist().
 response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     Majorb = list_to_binary(integer_to_list(VMajor)),
@@ -143,26 +133,7 @@ response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     Headers5 = [<< Key/binary, ": ", Value/binary, "\r\n" >>
 		    || {Key, Value} <- Headers4],
     [StatusLine, Headers5, <<"\r\n">>].
-
+-spec response_head(#http_rep{}) -> iolist().
 response_head(Rep) ->
     response_head({1, 1}, Rep#http_rep.status, Rep#http_rep.headers, []).
 
-%% Tests.
-
--ifdef(TEST).
-
-parse_qs_test_() ->
-    %% {Qs, Result}
-    Tests = [
-	     {<<"">>, []},
-	     {<<"a=b">>, [{<<"a">>, <<"b">>}]},
-	     {<<"aaa=bbb">>, [{<<"aaa">>, <<"bbb">>}]},
-	     {<<"a&b">>, [{<<"a">>, true}, {<<"b">>, true}]},
-	     {<<"a=b&c&d=e">>, [{<<"a">>, <<"b">>},
-				{<<"c">>, true}, {<<"d">>, <<"e">>}]},
-	     {<<"a=b=c=d=e&f=g">>, [{<<"a">>, <<"b=c=d=e">>}, {<<"f">>, <<"g">>}]},
-	     {<<"a+b=c+d">>, [{<<"a b">>, <<"c d">>}]}
-	    ],
-    [{Qs, fun() -> R = parse_qs(Qs) end} || {Qs, R} <- Tests].
-
--endif.
