@@ -17,6 +17,8 @@
 
 -record(state, {listener}).
 
+-include("cache.hrl").
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -29,7 +31,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+	gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -47,33 +49,37 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-  start_metrics(),
-  %% list({Handler, Opts})      
-  Dispatch = [{agilitycache_proxy_handler, []}],
-  %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
-  Ref = make_ref(),
-  ListenOpts = agilitycache_utils:get_app_env(agilitycache, listen, []),
-  BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
-  Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
-  %%lager:debug("ListenOpts ~p~n", [ListenOpts]),
-  TransOpts = [
-    {port, proplists:get_value(port, ListenOpts, 8080)}, 
-    {backlog, proplists:get_value(backlog, ListenOpts, 128000)}, %% We don't care if we have logs of pending connections, we'll process them anyway 
-    {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
-    {reuseaddr, true},
-    %{nodelay, true}, %% We want to be informed even when packages are small
-    {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time, something is definitively wrong...
-    {send_timeout_close, true}, %%... and therefore the connection should be closed
-    {buffer, BufferSize}
-    ],
-    lager:debug("TransOpts~p~n", [TransOpts]),
-    NbAcceptors = proplists:get_value(acceptors, ListenOpts),
-    lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
-    {ok, _} = cowboy:start_listener(Ref, NbAcceptors,
-      agilitycache_tcp_transport, TransOpts,
-      agilitycache_http_protocol, [{dispatch, Dispatch}]
-    ),
-    {ok, #state{listener=Ref}}.
+	start_metrics(),
+	start_tables(),
+	%% list({Handler, Opts})
+	Dispatch = [{agilitycache_proxy_handler, []}],
+	%% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
+	Ref = make_ref(),
+	ListenOpts = agilitycache_utils:get_app_env(agilitycache, listen, []),
+	BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
+	Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
+	%%lager:debug("ListenOpts ~p~n", [ListenOpts]),
+	TransOpts = [
+	             {port, proplists:get_value(port, ListenOpts, 8080)},
+	             %% We don't care if we have logs of pending connections, we'll process them anyway
+	             {backlog, proplists:get_value(backlog, ListenOpts, 128000)},
+	             {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
+	             %{nodelay, true}, %% We want to be informed even when packages are small
+	             {reuseaddr, true},
+	             %% If we couldn't send a message in Timeout time, something is definitively wrong...
+	             {send_timeout, Timeout},
+	             %%... and therefore the connection should be closed
+	             {send_timeout_close, true},
+	             {buffer, BufferSize}
+	            ],
+	lager:debug("TransOpts~p~n", [TransOpts]),
+	NbAcceptors = proplists:get_value(acceptors, ListenOpts),
+	lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
+	{ok, _} = cowboy:start_listener(Ref, NbAcceptors,
+	                                agilitycache_tcp_transport, TransOpts,
+	                                agilitycache_http_protocol, [{dispatch, Dispatch}]
+	                               ),
+	{ok, #state{listener=Ref}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -90,8 +96,8 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+	Reply = ok,
+	{reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -104,7 +110,7 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+	{noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -117,7 +123,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(_Info, State) ->
-    {noreply, State}.
+	{noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -131,7 +137,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{listener=Listener}) ->
-    cowboy:stop_listener(Listener).
+	cowboy:stop_listener(Listener).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -142,14 +148,37 @@ terminate(_Reason, #state{listener=Listener}) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+	{ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
 start_metrics() ->
-  folsom_sup:start_link(),
-  folsom_metrics:new_meter(requests).
+	folsom_sup:start_link(),
+	folsom_metrics:new_meter(requests).
 
-
+start_tables() ->
+	mnesia:create_schema([node()]),
+	mnesia:start(),
+	mnesia:create_table(agilitycache_transit_file, [{disc_copies, [node()]}, {attributes, record_info(fields, agilitycache_transit_file)}]),
+	%% Deletes inconsistent records and incomplete files
+	Fun = fun() ->
+			      Keys = mnesia:select(agilitycache_transit_file,
+			                           [{#agilitycache_transit_file{status=downloading, id='$1', _='_'},
+			                             [], ['$1']}], read),
+			      [
+			       begin
+				       case agilitycache_cache_dir:find_file(FileId) of
+					       {ok, Path} ->
+						       %% Preventing from the warning of file:delete/1
+						       %% Warning!
+						       %% In a future release, a bad type for the Filename argument will probably generate an exception.
+						       catch file:delete(Path);
+					       _ ->
+						       ok
+				       end
+			       end || FileId <- Keys],
+			      mnesia:clear_table(agilitycache_transit_file)
+	      end,
+	mnesia:transaction(Fun).
