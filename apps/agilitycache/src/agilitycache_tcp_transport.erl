@@ -113,7 +113,10 @@ connect(RemoteIp, RemotePort, Opts, Timeout) ->
 	%% Hack do timeout: tentar conectar com um timeout para cada ip
 	%% não sei se compensa... mas é melhor, pois testa todos os ips...
 	%% @todo: Criar um cache DNS, e só inserir as entradas que conectarem com sucesso
-	case inet_tcp:getaddrs(RemoteIp, Timeout) of
+	case agilitycache_app:instrument_function(resolve_time,
+	                                          inet_tcp,
+	                                          getaddrs,
+	                                          [RemoteIp, Timeout]) of
 		{ok, IPs} ->
 			ConnectOpts = [binary, {active, false}, {packet, raw} | Opts],
 			try_connect(IPs, RemotePort, ConnectOpts, Timeout, {error, einval});
