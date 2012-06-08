@@ -156,7 +156,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 start_metrics() ->
 	folsom_sup:start_link(),
-	folsom_metrics:new_meter(requests).
+	folsom_metrics:new_meter(requests),
+	folsom_metrics:new_histogram(resolve_time),
+	folsom_metrics:new_histogram(connection_time).
 
 start_tables() ->
 	mnesia:create_schema([node()]),
