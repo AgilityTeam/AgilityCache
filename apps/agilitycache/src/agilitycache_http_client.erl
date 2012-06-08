@@ -67,7 +67,10 @@ start_connect(HttpReq =
 	             {delay_send, true}
 	            ],
 	lager:debug("Host: ~p Port: ~p", [Host, Port]),
-	case Transport:connect(binary_to_list(Host), Port, TransOpts, Timeout) of
+	case agilitycache_app:instrument_function(connection_time,
+	                                          Transport,
+	                                          connect,
+	                                          [binary_to_list(Host), Port, TransOpts, Timeout]) of
 		{ok, Socket} ->
 			start_send_request(HttpReq, State#http_client_state{client_socket = Socket});
 		{error, Reason} ->
