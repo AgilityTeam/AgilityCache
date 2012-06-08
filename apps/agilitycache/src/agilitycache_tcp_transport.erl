@@ -107,11 +107,30 @@ close(Socket) ->
 
 %% @doc Connect to a server
 %% @see gen_tcp:connect/3,4
--spec connect(inet:ip_address(), inet:port_number(), any(), timeout()) 
+-spec connect(inet:ip_address(), inet:port_number(), any(), timeout())
 	     -> {ok, inet:socket()} | {error, atom()}.
 connect(RemoteIp, RemotePort, Opts, Timeout) ->
-    ConnectOpts = [binary, {active, false}, {packet, raw} | Opts],
-    gen_tcp:connect(RemoteIp, RemotePort, ConnectOpts, Timeout).
+	%% Hack do timeout: tentar conectar com um timeout para cada ip
+	%% não sei se compensa... mas é melhor, pois testa todos os ips...
+	%% @todo: Criar um cache DNS, e só inserir as entradas que conectarem com sucesso
+	case inet_tcp:getaddrs(RemoteIp, Timeout) of
+		{ok, IPs} ->
+			ConnectOpts = [binary, {active, false}, {packet, raw} | Opts],
+			try_connect(IPs, RemotePort, ConnectOpts, Timeout, {error, einval});
+		Error ->
+			Error
+	end.
+
+try_connect([IP|IPs], RemotePort, Opts, Timeout, _) ->
+	case gen_tcp:connect(IP, RemotePort, Opts, Timeout) of
+		{ok,S} ->
+			{ok,S};
+		Err1 ->
+			try_connect(IPs, RemotePort, Opts, Timeout, Err1)
+	end;
+try_connect([], _Port, _Opts, _Timer, Err) ->
+	Err.
+
 -spec connect(inet:ip_address(), inet:port_number(), any()) -> {ok, inet:socket()} | {error, atom()}.
 connect(RemoteIp, RemotePort, Opts) ->
     connect(RemoteIp, RemotePort, Opts, infinity).

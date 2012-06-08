@@ -7,263 +7,173 @@
 -module(agilitycache_http_req).
 
 -export([
-	 method/3, version/3, peer/3,
-	 host/3, raw_host/3, port/3,
-	 path/3, raw_path/3,
-	 qs_val/4, qs_val/5, qs_vals/3, raw_qs/3,
-	 header/4, header/5, headers/3,
-	 cookie/4, cookie/5, cookies/3,
-	 content_length/3
-	]). %% Request API.
+         method/1,
+         version/1,
+         peer/1,
+         uri/1,
+         headers/1,
+         connection/1,
+         content_length/1,
+         header/2,
+         header/3,
+         uri_domain/1,
+         uri_port/1,
+         uri_path/1,
+         uri_query_string/1
+        ]).
 
 -export([
-	 reply/6, 
-	 start_chunked_reply/5, send_chunk/4, stop_chunked_reply/3,
-	 start_reply/5
-	]). %% Response API.
+         reply/5,
+         start_reply/5
+        ]). %% Response API.
 
 -export([
-	 compact/1,
-	 request_head/1
-	]). %% Misc API.
+         request_head/1
+        ]). %% Misc API.
 
--include("include/http.hrl").
-%% Request API.
+-include("http.hrl").
 
-%% @doc Return the HTTP method of the request.
--spec method(module(), inet:socket(), #http_req{}) -> {http_method(), #http_req{}}.
-method(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:method(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec method(#http_req{}) -> {http_method(), #http_req{}}.
+method(#http_req{ method = Method} = Req) ->
+	{Method, Req}.
 
-%% @doc Return the HTTP version used for the request.
--spec version(module(), inet:socket(), #http_req{}) -> {http_version(), #http_req{}}.
-version(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:version(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec version(#http_req{}) -> {http_version(), #http_req{}}.
+version(#http_req{ version = Version} = Req) ->
+	{Version, Req}.
 
-%% @doc Return the peer address and port number of the remote host.
-%%-spec peer(pid(), #http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
-peer(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:peer(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+%% Pré-calculado ao iniciar conexão
+-spec peer(#http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+peer(#http_req{ peer = Peer} = Req) ->
+	{Peer, Req}.
 
-%% @doc Return the tokens for the hostname requested.
-%%-spec host(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
-host(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:host(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec uri(#http_req{}) -> {#http_uri{}, #http_req{}}.
+uri(#http_req{ uri = Uri} = Req) ->
+	{Uri, Req}.
+-spec uri_domain(#http_req{}) -> {undefined | binary(), #http_req{}}.
+uri_domain(#http_req{ uri = #http_uri{ domain = Domain} } = Req) ->
+	{Domain, Req}.
+-spec uri_port(#http_req{}) -> {inet:ip_port(), #http_req{}}.
+uri_port(#http_req{ uri = #http_uri{ port = Port} } = Req) ->
+	{Port, Req}.
+-spec uri_path(#http_req{}) -> {iodata(), #http_req{}}.
+uri_path(#http_req{ uri = #http_uri{ path = Path} } = Req) ->
+	{Path, Req}.
+-spec uri_query_string(#http_req{}) -> {iodata(), #http_req{}}.
+uri_query_string(#http_req{ uri = #http_uri{ query_string = Qs} } = Req) ->
+	{Qs, Req}.
 
-%% @doc Return the raw host directly taken from the request.
-%%-spec raw_host(#http_req{}) -> {binary(), #http_req{}}.
-raw_host(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:raw_host(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec headers(#http_req{}) -> {http_headers(), #http_req{}}.
+headers(#http_req{ headers = Headers} = Req) ->
+	{Headers, Req}.
 
-%% @doc Return the port used for this request.
-%%-spec port(#http_req{}) -> {inet:ip_port(), #http_req{}}.
-port(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:port(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec connection(#http_req{}) -> {keepalive | close, #http_req{}}.
+connection(#http_req{ connection = Connection} = Req) ->
+	{Connection, Req}.
 
-%% @doc Return the tokens for the path requested.
-%%-spec path(#http_req{}) -> {cowboy_dispatcher:tokens(), #http_req{}}.
-path(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:path(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec content_length(#http_req{}) ->
+		                    {undefined | non_neg_integer(), #http_req{}}.
+content_length(#http_req{content_length=undefined} = Req) ->
+	{Length, Req1} = case header('Content-Length', Req) of
+		                 {L1, Req_1} when is_binary(L1) ->
+                                                % Talvez iolist_to_binary seja desnecessário, mas é bom para manter certinho o input com iolist/iodata
+			                 {list_to_integer(
+			                      binary_to_list(
+			                          iolist_to_binary(L1))), Req_1};
+		                 {_, Req_2} ->
+			                 {invalid, Req_2}
+	                 end,
+	case Length of
+		invalid ->
+			{undefined, Req1#http_req{content_length=invalid}};
+		_ ->
+			{Length, Req1#http_req{content_length=Length}}
+	end;
+%% estado invalid = Content-Length: -1,
+%% serve para não ficar escaneando toda hora
+content_length(#http_req{content_length=invalid} = Req) ->
+	{undefined, Req};
+content_length(#http_req{content_length=ContentLength} = Req) ->
+	{ContentLength, Req}.
 
-%% @doc Return the raw path directly taken from the request.
-%%-spec raw_path(#http_req{}) -> {binary(), #http_req{}}.
-raw_path(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:raw_path(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+%% @equiv header(Name, Req, undefined)
+-spec header(http_header(), #http_req{})
+            -> {iodata() | undefined, #http_req{}}.
+header(Name, Req) when is_atom(Name) orelse is_binary(Name) ->
+	header(Name, Req, undefined).
 
-qs_val(Name, Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:qs_val(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-qs_val(Name, Transport, Socket, Req, Default) ->
-    {Result, CowboyReq} = cowboy_http_req:qs_val(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req), Default),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-    
-qs_vals(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:qs_vals(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-    
-raw_qs(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:raw_qs(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-header(Name, Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:header(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-header(Name, Transport, Socket, Req, Default) ->
-    {Result, CowboyReq} = cowboy_http_req:header(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req), Default),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-headers(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:headers(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-cookie(Name, Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:cookie(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-cookie(Name, Transport, Socket, Req, Default) ->
-    {Result, CowboyReq} = cowboy_http_req:cookie(Name, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req), Default),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-
-cookies(Transport, Socket, Req) ->
-    {Result, CowboyReq} = cowboy_http_req:cookies(agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-    {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
-    
--spec content_length(undefined | module(), undefined | inet:socket(), #http_req{}) -> {undefined | non_neg_integer() | binary(), #http_req{}}.
-content_length(Transport, Socket, Req=#http_req{content_length=undefined}) ->
-    {Length, Req} = header('Content-Length', Transport, Socket, Req),
-    {Length, Req#http_req{content_length=Length}};
-content_length(_Transport, _Socket, Req) ->
-    {Req#http_req.content_length, Req}.
+%% @doc Return the header value for the given key, or a default if missing.
+-spec header(http_header(), #http_req{}, Default)
+            -> {iodata() | Default, #http_req{}} when Default::any().
+header(Name, #http_req{ headers = Headers} = Req, Default) when is_atom(Name) orelse is_binary(Name) ->
+	case lists:keyfind(Name, 1, Headers) of
+		{Name, Value} -> {Value, Req};
+		false -> {Default, Req}
+	end.
 
 %% Response API.
 
-%% @doc Send a reply to the client.
-%%-spec reply(pid(), http_status(), http_headers(), iodata(), #http_req{})
-%%	   -> {ok, #http_req{}}.
-reply(Transport, Socket, Code, Headers, Body, Req) ->
-  {Result, CowboyReq} = cowboy_http_req:reply(Code, Headers, Body, agilitycache_http_req_conversor:req_to_cowboy(Transport, Socket, Req)),
-  {Result, agilitycache_http_req_conversor:req_to_agilitycache(CowboyReq)}.
+-spec reply(agilitycache_http_server:agilitycache_http_server_state(),
+            http_status(),
+            http_headers(),
+            iodata(),
+            #http_req{}) ->
+			   {ok, #http_req{},
+			    agilitycache_http_server:agilitycache_http_server_state()} | {error, any(), any()}.
+reply(HttpServer, Code, Headers, Body, Req) ->
+	{ok, Req0, HttpServer0} = start_reply(HttpServer, Code, Headers, iolist_size(Body), Req),
+	case agilitycache_http_server:send_data(Body, HttpServer0) of
+		{ok, HttpServer1} ->
+			{ok, Req0, HttpServer1};
+		{error, _, _} = Error ->
+			Error
+	end.
 
-%% @doc Send a reply to the client.
-%%-spec start_reply(pid(), http_status(), http_headers(), integer()|binary(), #http_req{})
-%%		 -> {ok, #http_req{}}.
-start_reply(HttpServer, Code, Headers, Length, Req) when is_integer(Length) ->
-    start_reply(HttpServer, Code, Headers, list_to_binary(integer_to_list(Length)), Req);
-start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, method=Method, version=Version}) ->
-    MyHeaders = case Length of
-      undefined ->
-        [
-          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
-          {<<"Date">>, cowboy_clock:rfc1123()},
-          {<<"Server">>, <<"AgilityCache">>}
-        ];
-      _ when is_binary(Length) ->
-        [      
-          {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},      
-          {<<"Date">>, cowboy_clock:rfc1123()},
-          {<<"Content-Length">>, Length},
-          {<<"Server">>, <<"AgilityCache">>}
-        ]
-    end,
-    
-    Head = agilitycache_http_rep:response_head(Version, Code, Headers, MyHeaders),
-    %% @todo arrumar isso pra fazer um match mais bonitinho
-    %% ou passar isso pra frente
-    case agilitycache_http_server:send_data(Head, HttpServer) of
-      {ok, HttpServer0} ->
-        case Method of
-          'HEAD' -> {ok, Req#http_req{resp_state=done}, HttpServer0};
-          _ -> {ok, Req#http_req{resp_state=waiting}, HttpServer0}
-        end;
-      {error, _, _} = Error ->
-        Error
-    end.
+-spec start_reply(agilitycache_http_server:agilitycache_http_server_state(),
+            http_status(),
+            http_headers(),
+            non_neg_integer(),
+            #http_req{}) ->
+			   {ok, #http_req{},
+			    agilitycache_http_server:agilitycache_http_server_state()} | {error, any(), any()}.
+start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, version=Version}) ->
+	MyHeaders0 = [
+	              {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
+	              {<<"Date">>, cowboy_clock:rfc1123()},
+	              {<<"Server">>, <<"AgilityCache">>}
+	             ],
+	MyHeaders = case Length of
+		            undefined ->
+			            MyHeaders0;
+		            _ when is_integer(Length)->
+			            [{<<"Content-Length">>, list_to_binary(integer_to_list(Length))} | MyHeaders0]
+	            end,
 
-%% @doc Initiate the sending of a chunked reply to the client.
-%% @see agilitycache_http_req:chunk/2
-%%-spec start_chunked_reply(pid(), http_status(), http_headers(), #http_req{})
-%%			 -> {ok, #http_req{}}.
-start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{method='HEAD', resp_state=waiting, version=Version}) ->
-    Head = agilitycache_http_rep:response_head(Version, Code, Headers, [
-							       {<<"Date">>, cowboy_clock:rfc1123()},
-							       {<<"Server">>, <<"AgilityCache">>}
-							      ]),
-    case Transport:send(Socket, Head) of
-	ok ->
-            {ok, Req#http_req{resp_state=done}};
-	{error, closed} ->
-            %% @todo Eu devia alertar sobre isso, não?
-            {ok, Req#http_req{resp_state=done}};
-	{error, _} = Error ->
-            Error
-    end;
-start_chunked_reply(Transport, Socket, Code, Headers, Req=#http_req{resp_state=waiting, version=Version}) ->
-    Head = agilitycache_http_rep:response_head(Version, Code, Headers, [
-							       {<<"Connection">>, <<"close">>},
-							       {<<"Transfer-Encoding">>, <<"chunked">>},
-							       {<<"Date">>, cowboy_clock:rfc1123()},
-							       {<<"Server">>, <<"AgilityCache">>}
-							      ]),
-    case Transport:send(Socket, Head) of
-	ok ->
-            {ok, Req#http_req{resp_state=chunks}};
-	{error, closed} ->
-            %% @todo Eu devia alertar sobre isso, não?
-            {ok, Req#http_req{resp_state=done}};
-	{error, _} = Error ->
-            Error
-    end.
+	Head = agilitycache_http_rep:response_head(Version, Code, Headers, MyHeaders),
+	%% @todo arrumar isso pra fazer um match mais bonitinho
+	%% ou passar isso pra frente
+	case agilitycache_http_server:send_data(Head, HttpServer) of
+		{ok, HttpServer0} ->
+			{ok, Req, HttpServer0};
+		{error, _, _} = Error ->
+			Error
+	end.
 
-%% @doc Send a chunk of data.
-%%
-%% A chunked reply must have been initiated before calling this function.
-%%-spec send_chunk(pid(), iodata(), #http_req{}) -> ok.
-send_chunk(_Transport, _Socket, _Data, #http_req{method='HEAD'}) ->
-    ok;
-send_chunk(Transport, Socket, Data, #http_req{resp_state=chunks}) ->
-    case Transport:send(Socket, [integer_to_list(iolist_size(Data), 16), <<"\r\n">>, Data, <<"\r\n">>]) of
-	ok ->
-            ok;
-	{error, closed} ->
-            %% @todo Eu devia alertar sobre isso, não?
-            ok;
-	{error, _} = Error ->
-            Error
-    end.
-%%-spec stop_chunked_reply(pid(), #http_req{}) -> ok.
-stop_chunked_reply(Transport, Socket, #http_req{resp_state=chunks}) ->
-    case Transport:send(Socket, <<"0\r\n\r\n">>) of
-	ok ->
-	    ok;
-	{error, closed} ->
-	    %% @todo Eu devia alertar sobre isso, não?
-	    ok;
-	{error, _} = Error ->
-	    Error
-    end.
-
-%% Misc API.
-
-%% @doc Compact the request data by removing all non-system information.
-%%
-%% This essentially removes the host, path, query string and headers.
-%% Use it when you really need to save up memory, for example when having
-%% many concurrent long-running connections.
--spec compact(#http_req{}) -> #http_req{}.
-compact(Req) ->
-    Req#http_req{host=undefined, path=undefined,
-		 qs_vals=undefined, raw_qs=undefined,
-		 headers=[]}.
-
-%% Internal.
-
-
--spec request_head(#http_req{}) -> iolist().
+-spec request_head(#http_req{}) -> iodata().
 request_head(Req) ->
-    {Major, Minor} = Req#http_req.version,
-    Majorb = list_to_binary(integer_to_list(Major)),
-    Minorb = list_to_binary(integer_to_list(Minor)),
-    Method = agilitycache_http_protocol_parser:method_to_binary(Req#http_req.method),
-    Path1= Req#http_req.raw_path,
-    Qs = Req#http_req.raw_qs,
-    Path = case Qs of
-	       <<>> ->
-		   Path1;
-	       _ ->
-		   <<Path1/binary, "?" , Qs/binary>>
-	   end,
-    RequestLine = <<Method/binary, " ", Path/binary, " HTTP/", Majorb/binary, ".", Minorb/binary, "\r\n">>,
-    Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Req#http_req.headers],
-    Headers = [<< Key/binary, ": ", Value/binary, "\r\n" >> || {Key, Value} <- Headers2],
-    [RequestLine, Headers, <<"\r\n">>].
+	{Major, Minor} = Req#http_req.version,
+	Majorb = list_to_binary(integer_to_list(Major)),
+	Minorb = list_to_binary(integer_to_list(Minor)),
+	Method = agilitycache_http_protocol_parser:method_to_binary(Req#http_req.method),
+	Path1= Req#http_req.uri#http_uri.path,
+	Qs = Req#http_req.uri#http_uri.query_string,
+	Path = case Qs of
+		       <<>> ->
+			       Path1;
+		       _ ->
+			       <<Path1/binary, "?" , Qs/binary>>
+	       end,
+	RequestLine = <<Method/binary, " ", Path/binary, " HTTP/", Majorb/binary, ".", Minorb/binary, "\r\n">>,
+	Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Req#http_req.headers],
+	Headers = [<< Key/binary, ": ", Value/binary, "\r\n" >> || {Key, Value} <- Headers2],
+	[RequestLine, Headers, <<"\r\n">>].
 

@@ -10,7 +10,7 @@
         ]).
 
 %-compile(export_all).
-
+-spec read_preliminar_info(binary(), #cached_file_info{}) -> {ok, #cached_file_info{}} | {error, any()}.
 read_preliminar_info(FileId, CachedFileInfo) ->
   try
     {ok, CachedFileInfo0} = read_cached_file_info(FileId, <<"age">>, CachedFileInfo),

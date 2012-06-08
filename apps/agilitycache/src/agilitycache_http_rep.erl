@@ -8,14 +8,12 @@
 
 -export([
 	 status/1, version/1, string/1,
-	 peer/3,
+	 peer/1,
 	 header/2, header/3, headers/1,
-	 cookie/2, cookie/3, cookies/1,
 	 content_length/1
 	]). %% Request API.
 
 -export([
-	 compact/1,
 	 response_head/1,
 	 response_head/4
 	]). %% Misc API.
@@ -29,97 +27,63 @@
 status(Rep) ->
     {Rep#http_rep.status, Rep}.
 
--spec string(#http_rep{}) -> {http_string(), #http_rep{}}.
-string(Rep) ->
-    {Rep#http_rep.string, Rep}.
-
 %% @doc Return the HTTP version used for the request.
 -spec version(#http_rep{}) -> {http_version(), #http_rep{}}.
 version(Rep) ->
     {Rep#http_rep.version, Rep}.
 
-%% @doc Return the peer address and port number of the remote host.
--spec peer(module(), gen_tcp:socket(), #http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
-peer(Transport, Socket, Rep=#http_rep{peer=undefined}) ->
-    {ok, Peer} = Transport:peername(Socket),
-    {Peer, Rep#http_rep{peer=Peer}};
-peer(_Transport, _Socket, Rep) ->
-    {Rep#http_rep.peer, Rep}.
+-spec string(#http_rep{}) -> {iodata(), #http_rep{}}.
+string(Rep) ->
+    {Rep#http_rep.string, Rep}.
 
-%% @equiv header(Name, Rep, undefined)
--spec header(atom() | binary(), #http_rep{})
-	    -> {binary() | undefined, #http_rep{}}.
-header(Name, Rep) when is_atom(Name) orelse is_binary(Name) ->
-    header(Name, Rep, undefined).
+%% @doc Return the peer address and port number of the remote host.
+-spec peer(#http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_rep{}}.
+peer(Rep = #http_rep { peer = Peer} ) ->
+    {Peer, Rep}.
+
+-spec headers(#http_rep{}) -> {http_headers(), #http_rep{}}.
+headers(#http_rep{ headers = Headers} = Req) ->
+	{Headers, Req}.
+
+-spec content_length(#http_rep{}) ->
+		                    {undefined | non_neg_integer(), #http_rep{}}.
+content_length(#http_rep{content_length=undefined} = Req) ->
+	{Length, Req1} = case header('Content-Length', Req) of
+		                 {L1, Req_1} when is_binary(L1) ->
+                                                % Talvez iolist_to_binary seja desnecessário, mas é bom para manter certinho o input com iolist/iodata
+			                 {list_to_integer(
+			                      binary_to_list(
+			                          iolist_to_binary(L1))), Req_1};
+		                 {_, Req_2} ->
+			                 {invalid, Req_2}
+	                 end,
+	case Length of
+		invalid ->
+			{undefined, Req1#http_rep{content_length=invalid}};
+		_ ->
+			{Length, Req1#http_rep{content_length=Length}}
+	end;
+%% estado invalid = Content-Length: -1,
+%% serve para não ficar escaneando toda hora
+content_length(#http_rep{content_length=invalid} = Req) ->
+	{undefined, Req};
+content_length(#http_rep{content_length=ContentLength} = Req) ->
+	{ContentLength, Req}.
+
+%% @equiv header(Name, Req, undefined)
+-spec header(http_header(), #http_rep{})
+            -> {iodata() | undefined, #http_rep{}}.
+header(Name, Req) when is_atom(Name) orelse is_binary(Name) ->
+	header(Name, Req, undefined).
 
 %% @doc Return the header value for the given key, or a default if missing.
--spec header(atom() | binary(), #http_rep{}, Default)
-	    -> {binary() | Default, #http_rep{}} when Default::any().
-header(Name, Rep, Default) when is_atom(Name) orelse is_binary(Name) ->
-    case lists:keyfind(Name, 1, Rep#http_rep.headers) of
-	{Name, Value} -> {Value, Rep};
-	false -> {Default, Rep}
-    end.
-
-%% @doc Return the full list of headers.
--spec headers(#http_rep{}) -> {http_headers(), #http_rep{}}.
-headers(Rep) ->
-    {Rep#http_rep.headers, Rep}.
-
--spec content_length(#http_rep{}) -> {undefined | binary() | integer(), #http_rep{}}.
-content_length(Rep=#http_rep{content_length=undefined}) ->
-    {Length, Rep2} = header('Content-Length', Rep),
-    {Length, Rep2#http_rep{content_length=Length}};
-content_length(Rep) ->
-    {Rep#http_rep.content_length, Rep}.
-
-%% @equiv cookie(Name, Rep, undefined)
--spec cookie(binary(), #http_rep{})
-	    -> {binary() | true | undefined, #http_rep{}}.
-cookie(Name, Rep) when is_binary(Name) ->
-    cookie(Name, Rep, undefined).
-
-%% @doc Return the cookie value for the given key, or a default if
-%% missing.
--spec cookie(binary(), #http_rep{}, Default)
-	    -> {binary() | true | Default, #http_rep{}} when Default::any().
-cookie(Name, Rep=#http_rep{cookies=undefined}, Default) when is_binary(Name) ->
-    case header('Cookie', Rep) of
-	{undefined, Rep2} ->
-	    {Default, Rep2#http_rep{cookies=[]}};
-	{RawCookie, Rep2} ->
-	    Cookies = cowboy_cookies:parse_cookie(RawCookie),
-	    cookie(Name, Rep2#http_rep{cookies=Cookies}, Default)
-    end;
-cookie(Name, Rep, Default) ->
-    case lists:keyfind(Name, 1, Rep#http_rep.cookies) of
-	{Name, Value} -> {Value, Rep};
-	false -> {Default, Rep}
-    end.
-
-%% @doc Return the full list of cookie values.
--spec cookies(#http_rep{}) -> {list({binary(), binary() | true}), #http_rep{}}.
-cookies(Rep=#http_rep{cookies=undefined}) ->
-    case header('Cookie', Rep) of
-	{undefined, Rep2} ->
-	    {[], Rep2#http_rep{cookies=[]}};
-	{RawCookie, Rep2} ->
-	    Cookies = cowboy_cookies:parse_cookie(RawCookie),
-	    cookies(Rep2#http_rep{cookies=Cookies})
-    end;
-cookies(Rep=#http_rep{cookies=Cookies}) ->
-    {Cookies, Rep}.
-
-%% Misc API.
-
-%% @doc Compact the request data by removing all non-system information.
-%%
-%% This essentially removes the host, path, query string and headers.
-%% Use it when you really need to save up memory, for example when having
-%% many concurrent long-running connections.
--spec compact(#http_rep{}) -> #http_rep{}.
-compact(Rep) ->
-    Rep#http_rep{headers=[]}.
+-spec header(http_header(), #http_rep{}, Default)
+            -> {iodata() | Default, #http_rep{}} when Default::any().
+header(Name, #http_rep{ headers = Headers} = Req, Default) when is_atom(Name) orelse is_binary(Name) ->
+	case lists:keyfind(Name, 1, Headers) of
+		{Name, Value} -> {Value, Req};
+		false -> {Default, Req}
+	end.
 
 -spec response_head(http_version(), http_status(), http_headers(), http_headers()) -> iolist().
 response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
@@ -130,10 +94,12 @@ response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     Headers3 = lists:ukeysort(1, Headers2),
     DefaultHeaders0 = lists:ukeysort(1, DefaultHeaders),
     Headers4 = lists:ukeymerge(1, DefaultHeaders0, Headers3),
+    lager:debug("Headers4: ~p", [Headers4]),
     Headers5 = [<< Key/binary, ": ", Value/binary, "\r\n" >>
 		    || {Key, Value} <- Headers4],
     [StatusLine, Headers5, <<"\r\n">>].
 -spec response_head(#http_rep{}) -> iolist().
 response_head(Rep) ->
     response_head({1, 1}, Rep#http_rep.status, Rep#http_rep.headers, []).
+
 

@@ -55,20 +55,21 @@ start_request(HttpReq, State) ->
 	check_plugins(HttpReq, State, fun start_connect/2).
 
 -spec start_connect(#http_req{}, http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
-start_connect(HttpReq, State=#http_client_state{transport = Transport, timeout = Timeout}) ->
-	{RawHost, HttpReq0} = agilitycache_http_req:raw_host(Transport, undefined, HttpReq), %% undefined no lugar do socket é seguro neste caso!
-	{Port, HttpReq1} = agilitycache_http_req:port(Transport, undefined, HttpReq0),
+start_connect(HttpReq =
+	              #http_req{ uri=_Uri=#http_uri{ domain = Host, port = Port}}, State=#http_client_state{transport = Transport, timeout = Timeout}) ->
+
 	BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
 	TransOpts = [
-                                                %{nodelay, true}%, %% We want to be informed even when packages are small
+	             %%{nodelay, true}%, %% We want to be informed even when packages are small
 	             {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
 	             {send_timeout_close, true}, %%... and therefore the connection should be closed
 	             {buffer, BufferSize},
 	             {delay_send, true}
 	            ],
-	case Transport:connect(binary_to_list(RawHost), Port, TransOpts, Timeout) of
+	lager:debug("Host: ~p Port: ~p", [Host, Port]),
+	case Transport:connect(binary_to_list(Host), Port, TransOpts, Timeout) of
 		{ok, Socket} ->
-			start_send_request(HttpReq1, State#http_client_state{client_socket = Socket});
+			start_send_request(HttpReq, State#http_client_state{client_socket = Socket});
 		{error, Reason} ->
 			{error, Reason, State}
 	end.
@@ -86,6 +87,7 @@ start_receive_reply(State = #http_client_state{cache_status = hit, cache_info = 
 	{ok, CachedFileInfo0} = agilitycache_database:read_remaining_info(FileId, CachedFileInfo),
 	{ok, FileHandle} = file:open(Path, [raw, read, binary]),
 	HttpRep = CachedFileInfo0#cached_file_info.http_rep,
+	lager:debug("HttpRep: ~p", [HttpRep]),
 	{ok, State#http_client_state{cache_info = CachedFileInfo0, http_rep=HttpRep#http_rep{
 		  headers = [{<<"X-Agilitycache">>, agilitycache_utils:hexstring(FileId)},
 		             {<<"X-Cache">>, <<"Hit">>},

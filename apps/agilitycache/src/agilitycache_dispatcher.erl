@@ -1,7 +1,7 @@
 %% @doc Dispatch requests according to a hostname and path.
 -module(agilitycache_dispatcher).
 
--export([split_host/1, split_path/1, match/2]). %% API.
+-export([split_host_port/1, split_host/1, split_path/1, match/2]). %% API.
 
 -type path_tokens() :: list(binary()).
 -type dispatch_rule() :: list({module(), any()}).
@@ -12,6 +12,16 @@
 -include("include/http.hrl").
 
 %% API.
+-spec split_host_port(binary()) -> {iodata(), undefined | inet:ip_port()}.
+split_host_port(<<>>) ->
+	{<<>>, undefined};
+split_host_port(Host) ->
+	case binary:split(Host, <<":">>) of
+		[Host] ->
+			{Host, undefined};
+		[Host2, Port] ->
+			{Host2, list_to_integer(binary_to_list(Port))}
+	end.
 
 %% @doc Split a hostname into a list of tokens.
 -spec split_host(binary())

@@ -13,73 +13,51 @@
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
--type http_method() :: 'OPTIONS' | 'GET' | 'HEAD'
-		     | 'POST' | 'PUT' | 'DELETE' | 'TRACE' | binary().
--type http_uri() :: '*' | {absoluteURI, http | https, Host::binary(),
-			   Port::integer() | undefined, Path::binary()}
-		  | {scheme, Scheme::binary(), binary()}
-		  | {abs_path, binary()} | binary().
+-type http_method()  :: 'OPTIONS' | 'GET' | 'HEAD'
+                      | 'POST' | 'PUT' | 'DELETE' | 'TRACE' | binary().
 -type http_version() :: {Major::non_neg_integer(), Minor::non_neg_integer()}.
--type http_header() :: 'Cache-Control' | 'Connection' | 'Date' | 'Pragma'
-		     | 'Transfer-Encoding' | 'Upgrade' | 'Via' | 'Accept' | 'Accept-Charset'
-		     | 'Accept-Encoding' | 'Accept-Language' | 'Authorization' | 'From' | 'Host'
-		     | 'If-Modified-Since' | 'If-Match' | 'If-None-Match' | 'If-Range'
-		     | 'If-Unmodified-Since' | 'Max-Forwards' | 'Proxy-Authorization' | 'Range'
-		     | 'Referer' | 'User-Agent' | 'Age' | 'Location' | 'Proxy-Authenticate'
-		     | 'Public' | 'Retry-After' | 'Server' | 'Vary' | 'Warning'
-		     | 'Www-Authenticate' | 'Allow' | 'Content-Base' | 'Content-Encoding'
-		     | 'Content-Language' | 'Content-Length' | 'Content-Location'
-		     | 'Content-Md5' | 'Content-Range' | 'Content-Type' | 'Etag'
-		     | 'Expires' | 'Last-Modified' | 'Accept-Ranges' | 'Set-Cookie'
-		     | 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive'
-		     | 'Proxy-Connection' | binary().
+-type http_header()  :: 'Cache-Control' | 'Connection' | 'Date' | 'Pragma'
+                      | 'Transfer-Encoding' | 'Upgrade' | 'Via' | 'Accept' | 'Accept-Charset'
+                      | 'Accept-Encoding' | 'Accept-Language' | 'Authorization' | 'From' | 'Host'
+                      | 'If-Modified-Since' | 'If-Match' | 'If-None-Match' | 'If-Range'
+                      | 'If-Unmodified-Since' | 'Max-Forwards' | 'Proxy-Authorization' | 'Range'
+                      | 'Referer' | 'User-Agent' | 'Age' | 'Location' | 'Proxy-Authenticate'
+                      | 'Public' | 'Retry-After' | 'Server' | 'Vary' | 'Warning'
+                      | 'Www-Authenticate' | 'Allow' | 'Content-Base' | 'Content-Encoding'
+                      | 'Content-Language' | 'Content-Length' | 'Content-Location'
+                      | 'Content-Md5' | 'Content-Range' | 'Content-Type' | 'Etag'
+                      | 'Expires' | 'Last-Modified' | 'Accept-Ranges' | 'Set-Cookie'
+                      | 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive'
+                      | 'Proxy-Connection' | binary().
 -type http_headers() :: list({http_header(), iodata()}).
--type http_cookies() :: list({binary(), binary()}).
--type http_status() :: non_neg_integer() | binary().
--type http_string() :: binary().
+-type http_status()  :: non_neg_integer() | binary().
+
+-record(http_uri, {
+            domain         = undefined :: undefined | binary(),
+            port           = undefined :: undefined | inet:ip_port(),
+            path           = <<"/">>   :: iodata(),
+            query_string   = <<>>      :: iodata()
+           }).
 
 -record(http_req, {
-	  %% Request.
-	  method     = 'GET'     :: http_method(),
-	  version    = {1, 1}    :: http_version(),
-	  peer       = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
-	  host       = undefined :: undefined | cowboy_dispatcher:tokens(),
-	  host_info  = undefined :: undefined | cowboy_dispatcher:tokens(),
-	  raw_host   = undefined :: undefined | binary(),
-	  port       = undefined :: undefined | inet:ip_port(),
-	  path       = undefined :: undefined | '*' | cowboy_dispatcher:tokens(),
-	  path_info  = undefined :: undefined | cowboy_dispatcher:tokens(),
-	  raw_path   = undefined :: undefined | binary(),
-	  qs_vals    = undefined :: undefined | list({binary(), binary() | true}),
-	  raw_qs     = undefined :: undefined | binary(),
-	  bindings   = undefined :: undefined | cowboy_dispatcher:bindings(),
-	  headers    = []        :: http_headers(),
-	  cookies    = undefined :: undefined | http_cookies(),
-	  connection = keepalive :: keepalive | close,
-	  content_length     = undefined :: undefined | non_neg_integer() | binary(),
-
-	  %% Request body.
-	  body_state = waiting   :: waiting | done,
-
-	  %% Response.
-	  resp_state = locked    :: locked | waiting | chunks | done
-	 }).
+            %% Request.
+            method         = 'GET'     :: http_method(),
+            version        = {1, 1}    :: http_version(),
+            peer           = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
+            uri            = undefined :: undefined | #http_uri{},
+            headers        = []        :: http_headers(),
+            connection     = keepalive :: keepalive | close,
+            content_length = undefined :: undefined | invalid | non_neg_integer()
+           }).
 
 -record(http_rep, {
-	  %% Request.
-	  status     = 200       :: http_status(),
-	  version    = {1, 1}    :: http_version(),
-	  string     = <<>>      :: http_string(),
-	  peer       = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
-	  headers    = []        :: http_headers(),
-	  cookies    = undefined :: undefined | http_cookies(),
-	  connection = keepalive :: keepalive | close,
-	  content_length     = undefined :: undefined | non_neg_integer(),
-
-	  %% Request body.
-	  body_state = waiting   :: waiting | done,
-
-	  %% Response.
-	  resp_state = locked    :: locked | waiting | chunks | done
-	 }).
+            %% Request.
+            status         = 200       :: http_status(),
+            version        = {1, 1}    :: http_version(),
+            string         = <<>>      :: iodata(),
+            peer           = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
+            headers        = []        :: http_headers(),
+            connection     = keepalive :: keepalive | close,
+            content_length = undefined :: undefined | non_neg_integer()
+           }).
 

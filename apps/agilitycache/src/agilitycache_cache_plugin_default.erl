@@ -11,22 +11,30 @@
 		expires/2
 	]).
 
+-include("http.hrl").
+
+-spec name() -> binary().
 name() ->
 	<<"PluginDefault">>. % compatibilidade com os nomes do C++
 
+-spec in_charge(#http_req{}) -> boolean().
 in_charge(_HttpReq) ->
 	true.
 
+-spec cacheable(#http_req{}) -> boolean().
 cacheable(_HttpReq) ->
 	false.
 
+-spec cacheable(#http_req{}, #http_rep{}) -> boolean().
 cacheable(_HttpReq, _HttpRep) ->
   erlang:error(not_implemented).
 
 %% Nunca deve chamar isto
+-spec file_id(#http_req{}) -> binary().
 file_id(_HttpReq) ->
 	erlang:error(not_implemented).
 
 %% Nem isto
+-spec expires(#http_req{}, #http_rep{}) -> calendar:datetime().
 expires(_HttpReq, _HttpRep) ->
 	erlang:error(not_implemented).

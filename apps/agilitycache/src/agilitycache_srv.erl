@@ -64,7 +64,7 @@ init([]) ->
 	             %% We don't care if we have logs of pending connections, we'll process them anyway
 	             {backlog, proplists:get_value(backlog, ListenOpts, 128000)},
 	             {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
-	             %{nodelay, true}, %% We want to be informed even when packages are small
+                                                %{nodelay, true}, %% We want to be informed even when packages are small
 	             {reuseaddr, true},
 	             %% If we couldn't send a message in Timeout time, something is definitively wrong...
 	             {send_timeout, Timeout},
