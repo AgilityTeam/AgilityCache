@@ -224,16 +224,16 @@ parse_request_header({http_header, _I, 'Host', _R, RawHost}, State = #http_serve
 	State2 = case agilitycache_dispatcher:split_host_port(RawHost2) of
 		         {Host, DefaultPort} ->
 			         State#http_server_state{http_req=Req#http_req{
-			                                              uri=Uri#http_uri{domain=host, port=DefaultPort},
+			                                              uri=Uri#http_uri{domain=Host, port=DefaultPort},
 			                                              headers=[{'Host', Host}|Req#http_req.headers]}};
 		         {Host, undefined} ->
 			         State#http_server_state{http_req=Req#http_req{
-			                                              uri=Uri#http_uri{domain=host, port=DefaultPort},
+			                                              uri=Uri#http_uri{domain=Host, port=DefaultPort},
 			                                              headers=[{'Host', Host}|Req#http_req.headers]}};
 		         {Host, Port}->
 			         BinaryPort = list_to_binary(integer_to_list(Port)),
 			         State#http_server_state{http_req=Req#http_req{
-			                                              uri=Uri#http_uri{domain=host, port=Port},
+			                                              uri=Uri#http_uri{domain=Host, port=Port},
 			                                              headers=[{'Host', << Host/binary, ":", BinaryPort/binary>>}|Req#http_req.headers]}};
 		         _ ->
 			         {error, {http_error, 400}, State}
