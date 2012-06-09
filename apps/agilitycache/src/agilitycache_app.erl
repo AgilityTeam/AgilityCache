@@ -33,12 +33,18 @@ stop(_State) ->
 instrumentation() ->
 	[{X, instrumentation(X)} || X <- folsom_metrics:get_metrics()].
 
-instrumentation(resolve_time) ->
-	folsom_metrics:get_histogram_statistics(resolve_time);
-instrumentation(connection_time) ->
-	folsom_metrics:get_histogram_statistics(connection_time);
-instrumentation(requests) ->
-	folsom_metrics:get_metric_value(requests).
+instrumentation(Metric) ->
+	case folsom_metrics:get_metric_info(Metric) of
+		[{Metric, Info}] ->
+			case proplists:get_value(type, Info) of
+				histogram ->
+					folsom_metrics:get_histogram_statistics(Metric);
+				_ ->
+					folsom_metrics:get_metric_value(Metric)
+			end;
+		Error ->
+			Error
+	end.
 
 instrument_function(Hist, F) ->
 	Before = os:timestamp(),
