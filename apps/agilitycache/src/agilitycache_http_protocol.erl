@@ -197,7 +197,8 @@ send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpCli
 					                        if
 						                        Remaining - Size > 0 ->
 							                        {false, Remaining - Size};
-						                        Remaining - Size == 0 ->
+						                        true ->
+							                        %% @todo: fazer um strip quando der negativo
 							                        {true, Remaining - Size}
 					                        end
 			                        end,
