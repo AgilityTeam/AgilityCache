@@ -30,6 +30,7 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
 	gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
@@ -48,6 +49,7 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
+-spec init([]) -> {'ok',#state{listener::reference()}}.
 init([]) ->
 	start_metrics(),
 	start_tables(),
@@ -95,6 +97,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_call(_,_,_) -> {'reply','ok',_}.
 handle_call(_Request, _From, State) ->
 	Reply = ok,
 	{reply, Reply, State}.
@@ -109,6 +112,7 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_cast(_,_) -> {'noreply',_}.
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
@@ -122,6 +126,7 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -136,6 +141,7 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
+-spec terminate(_,#state{}) -> any().
 terminate(_Reason, #state{listener=Listener}) ->
 	cowboy:stop_listener(Listener).
 
@@ -147,6 +153,7 @@ terminate(_Reason, #state{listener=Listener}) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
+-spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
@@ -154,12 +161,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec start_metrics() -> any().
 start_metrics() ->
 	folsom_sup:start_link(),
 	folsom_metrics:new_meter(requests),
 	folsom_metrics:new_histogram(resolve_time),
 	folsom_metrics:new_histogram(connection_time).
 
+-spec start_tables() -> {'aborted',_} | {'atomic',_}.
 start_tables() ->
 	mnesia:create_schema([node()]),
 	mnesia:start(),

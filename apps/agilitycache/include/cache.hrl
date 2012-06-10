@@ -7,8 +7,9 @@
   }).
 
 
+-type cache_file_id() :: <<_:128>>.
 -record(agilitycache_transit_file, {
-    id :: binary(),
+    id :: cache_file_id(),
     status = undefined :: downloading | reading | undefined,
     concurrent_readers = 0 :: non_neg_integer()
   }).

@@ -24,6 +24,7 @@
 
 %% @doc Name of this transport API, <em>tcp</em>.
 -spec name() -> tcp.
+
 name() -> tcp.
 
 %% @doc Atoms used in the process messages sent by this API.
@@ -31,6 +32,7 @@ name() -> tcp.
 %% They identify incoming data, closed connection and errors when receiving
 %% data in active mode.
 -spec messages() -> {tcp, tcp_closed, tcp_error}.
+
 messages() -> {tcp, tcp_closed, tcp_error}.
 
 %% @doc Setup a socket to listen on the given port on the local host.
@@ -45,8 +47,9 @@ messages() -> {tcp, tcp_closed, tcp_error}.
 %% </dl>
 %%
 %% @see gen_tcp:listen/2
--spec listen([{port, inet:ip_port()} | {ip, inet:ip_address()}])
+-spec listen([{port, inet:port_number()} | {ip, inet:ip_address()}])
 	    -> {ok, inet:socket()} | {error, atom()}.
+
 listen(Opts) ->
     {port, Port} = lists:keyfind(port, 1, Opts),
     Backlog = proplists:get_value(backlog, Opts, 1024),
@@ -63,6 +66,7 @@ listen(Opts) ->
 %% @see gen_tcp:accept/2
 -spec accept(inet:socket(), timeout())
 	    -> {ok, inet:socket()} | {error, closed | timeout | atom()}.
+
 accept(LSocket, Timeout) ->
     gen_tcp:accept(LSocket, Timeout).
 
@@ -70,18 +74,21 @@ accept(LSocket, Timeout) ->
 %% @see gen_tcp:recv/3
 -spec recv(inet:socket(), non_neg_integer(), timeout())
 	  -> {ok, any()} | {error, closed | atom()}.
+
 recv(Socket, Length, Timeout) ->
     gen_tcp:recv(Socket, Length, Timeout).
 
 %% @doc Send a packet on a socket.
 %% @see gen_tcp:send/2
 -spec send(inet:socket(), iolist()) -> ok | {error, atom()}.
+
 send(Socket, Packet) ->
     gen_tcp:send(Socket, Packet).
 
 %% @doc Set one or more options for a socket.
 %% @see inet:setopts/2
 -spec setopts(inet:socket(), list()) -> ok | {error, atom()}.
+
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
@@ -89,19 +96,22 @@ setopts(Socket, Opts) ->
 %% @see gen_tcp:controlling_process/2
 -spec controlling_process(inet:socket(), pid())
 			 -> ok | {error, closed | not_owner | atom()}.
+
 controlling_process(Socket, Pid) ->
     gen_tcp:controlling_process(Socket, Pid).
 
 %% @doc Return the address and port for the other end of a connection.
 %% @see inet:peername/1
 -spec peername(inet:socket())
-	      -> {ok, {inet:ip_address(), inet:ip_port()}} | {error, atom()}.
+	      -> {ok, {inet:ip_address(), inet:port_number()}} | {error, atom()}.
+
 peername(Socket) ->
     inet:peername(Socket).
 
 %% @doc Close a TCP socket.
 %% @see gen_tcp:close/1
 -spec close(inet:socket()) -> ok.
+
 close(Socket) ->
     gen_tcp:close(Socket).
 
@@ -109,6 +119,7 @@ close(Socket) ->
 %% @see gen_tcp:connect/3,4
 -spec connect(inet:ip_address(), inet:port_number(), any(), timeout())
 	     -> {ok, inet:socket()} | {error, atom()}.
+
 connect(RemoteIp, RemotePort, Opts, Timeout) ->
 	%% Hack do timeout: tentar conectar com um timeout para cada ip
 	%% não sei se compensa... mas é melhor, pois testa todos os ips...
@@ -124,6 +135,7 @@ connect(RemoteIp, RemotePort, Opts, Timeout) ->
 			Error
 	end.
 
+-spec try_connect(maybe_improper_list(),_,nonempty_maybe_improper_list(),_,{'error',atom()}) -> {'error',atom()} | {'ok',port()}.
 try_connect([IP|IPs], RemotePort, Opts, Timeout, _) ->
 	case gen_tcp:connect(IP, RemotePort, Opts, Timeout) of
 		{ok,S} ->
@@ -135,5 +147,6 @@ try_connect([], _Port, _Opts, _Timer, Err) ->
 	Err.
 
 -spec connect(inet:ip_address(), inet:port_number(), any()) -> {ok, inet:socket()} | {error, atom()}.
+
 connect(RemoteIp, RemotePort, Opts) ->
     connect(RemoteIp, RemotePort, Opts, infinity).

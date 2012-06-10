@@ -18,11 +18,13 @@
 %% Internal.
 
 -spec version_to_connection(http_version()) -> keepalive | close.
+
 version_to_connection({1, 1}) -> keepalive;
 version_to_connection(_Any) -> close.
 
 -spec response_connection(http_headers(), keepalive | close)
   -> keepalive | close.
+
 response_connection([], Connection) ->
   Connection;
 response_connection([{Name, Value}|Tail], Connection) ->
@@ -38,6 +40,7 @@ response_connection([{Name, Value}|Tail], Connection) ->
   end.
 
 -spec response_connection_parse(binary()) -> keepalive | close.
+
 response_connection_parse(ReplyConn) ->
   Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
   cowboy_http:connection_to_atom(Tokens).
@@ -45,6 +48,7 @@ response_connection_parse(ReplyConn) ->
 
 -spec response_proxy_connection(http_headers(), keepalive | close)
   -> keepalive | close.
+
 response_proxy_connection([], Connection) ->
   Connection;
 response_proxy_connection([{Name, Value}|Tail], Connection) ->
@@ -60,11 +64,13 @@ response_proxy_connection([{Name, Value}|Tail], Connection) ->
   end.
 
 -spec response_proxy_connection_parse(binary()) -> keepalive | close.
+
 response_proxy_connection_parse(ReplyConn) ->
   Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
   cowboy_http:connection_to_atom(Tokens).
 
 -spec keepalive(list(), Default::any()) -> Default::any().
+
 keepalive([], Default) ->
   Default;
 keepalive([{Name, Value}|Tail], Default) ->
@@ -80,11 +86,13 @@ keepalive([{Name, Value}|Tail], Default) ->
   end.
 
 -spec keepalive_parse(list(), Default::any()) -> Default::any().
+
 keepalive_parse(Terms, Default) ->
   Tokens = cowboy_http:list(Terms, fun (A, B) -> B(<<>>, A) end),
   %%lager:debug("Tokens: ~p~nTerms: ~p~n", [Tokens, Terms]),
   keepalive_parse_2(Tokens, Default).
 
+-spec keepalive_parse_2(maybe_improper_list(),_) -> any().
 keepalive_parse_2([], Default) ->
   Default;
 keepalive_parse_2([ << "timeout=", Limit/binary>> |_Tail], _Default) ->
@@ -97,18 +105,21 @@ keepalive_parse_2([_Any|Tail], Default) ->
 
 -spec atom_to_connection(keepalive) -> <<_:80>>;
 			(close) -> <<_:40>>.
+
 atom_to_connection(keepalive) ->
     <<"keep-alive">>;
 atom_to_connection(close) ->
     <<"close">>.
 
 -spec default_port(atom()) -> 80 | 443.
+
 default_port(ssl) -> 443;
 default_port(_) -> 80.
 
 %% @todo While 32 should be enough for everybody, we should probably make
 %%       this configurable or something.
 -spec format_header(atom()) -> atom(); (binary()) -> binary().
+
 format_header(Field) when is_atom(Field) ->
     Field;
 format_header(Field) when byte_size(Field) =< 20; byte_size(Field) > 32 ->
@@ -117,6 +128,7 @@ format_header(Field) ->
     format_header(Field, true, <<>>).
 
 -spec format_header(binary(), boolean(), binary()) -> binary().
+
 format_header(<<>>, _Any, Acc) ->
     Acc;
 %% Replicate a bug in OTP for compatibility reasons when there's a - right
@@ -129,6 +141,7 @@ format_header(<< C, Rest/bits >>, false, Acc) ->
     format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_lower(C)) >>).
 
 -spec status(http_status()) -> binary().
+
 status(100) -> <<"100 Continue">>;
 status(101) -> <<"101 Switching Protocols">>;
 status(102) -> <<"102 Processing">>;
@@ -185,6 +198,7 @@ status(510) -> <<"510 Not Extended">>;
 status(B) when is_binary(B) -> B.
 
 -spec header_to_binary(http_header()) -> binary().
+
 header_to_binary('Cache-Control') -> <<"Cache-Control">>;
 header_to_binary('Connection') -> <<"Connection">>;
 header_to_binary('Date') -> <<"Date">>;
@@ -240,6 +254,7 @@ header_to_binary('Proxy-Connection') -> <<"Proxy-Connection">>;
 header_to_binary(B) when is_binary(B) -> B.
 
 -spec method_to_binary(http_method()) -> binary().
+
 method_to_binary('OPTIONS') -> <<"OPTIONS">>;
 method_to_binary('GET') -> <<"GET">>;
 method_to_binary('HEAD') -> <<"HEAD">>;

@@ -24,29 +24,35 @@
 
 %% @doc Return the HTTP method of the request.
 -spec status(#http_rep{}) -> {http_status(), #http_rep{}}.
+
 status(Rep) ->
     {Rep#http_rep.status, Rep}.
 
 %% @doc Return the HTTP version used for the request.
 -spec version(#http_rep{}) -> {http_version(), #http_rep{}}.
+
 version(Rep) ->
     {Rep#http_rep.version, Rep}.
 
 -spec string(#http_rep{}) -> {iodata(), #http_rep{}}.
+
 string(Rep) ->
     {Rep#http_rep.string, Rep}.
 
 %% @doc Return the peer address and port number of the remote host.
--spec peer(#http_rep{}) -> {{inet:ip_address(), inet:ip_port()}, #http_rep{}}.
+-spec peer(#http_rep{}) -> {{inet:ip_address(), inet:port_number()}, #http_rep{}}.
+
 peer(Rep = #http_rep { peer = Peer} ) ->
     {Peer, Rep}.
 
 -spec headers(#http_rep{}) -> {http_headers(), #http_rep{}}.
+
 headers(#http_rep{ headers = Headers} = Req) ->
 	{Headers, Req}.
 
 -spec content_length(#http_rep{}) ->
 		                    {undefined | non_neg_integer(), #http_rep{}}.
+
 content_length(#http_rep{content_length=undefined} = Req) ->
 	{Length, Req1} = case header('Content-Length', Req) of
 		                 {L1, Req_1} when is_binary(L1) ->
@@ -73,12 +79,14 @@ content_length(#http_rep{content_length=ContentLength} = Req) ->
 %% @equiv header(Name, Req, undefined)
 -spec header(http_header(), #http_rep{})
             -> {iodata() | undefined, #http_rep{}}.
+
 header(Name, Req) when is_atom(Name) orelse is_binary(Name) ->
 	header(Name, Req, undefined).
 
 %% @doc Return the header value for the given key, or a default if missing.
 -spec header(http_header(), #http_rep{}, Default)
             -> {iodata() | Default, #http_rep{}} when Default::any().
+
 header(Name, #http_rep{ headers = Headers} = Req, Default) when is_atom(Name) orelse is_binary(Name) ->
 	case lists:keyfind(Name, 1, Headers) of
 		{Name, Value} -> {Value, Req};
@@ -86,6 +94,7 @@ header(Name, #http_rep{ headers = Headers} = Req, Default) when is_atom(Name) or
 	end.
 
 -spec response_head(http_version(), http_status(), http_headers(), http_headers()) -> iolist().
+
 response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     Majorb = list_to_binary(integer_to_list(VMajor)),
     Minorb = list_to_binary(integer_to_list(VMinor)),
@@ -99,6 +108,7 @@ response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
 		    || {Key, Value} <- Headers4],
     [StatusLine, Headers5, <<"\r\n">>].
 -spec response_head(#http_rep{}) -> iolist().
+
 response_head(Rep) ->
     response_head({1, 1}, Rep#http_rep.status, Rep#http_rep.headers, []).
 

@@ -12,7 +12,7 @@
 -include("include/http.hrl").
 
 %% API.
--spec split_host_port(binary()) -> {iodata(), undefined | inet:ip_port()}.
+-spec split_host_port(binary()) -> {iodata(), undefined | inet:port_number()}.
 split_host_port(<<>>) ->
 	{<<>>, undefined};
 split_host_port(Host) ->
@@ -25,7 +25,7 @@ split_host_port(Host) ->
 
 %% @doc Split a hostname into a list of tokens.
 -spec split_host(binary())
-		-> {[binary()], binary(), undefined | inet:ip_port()}.
+		-> {[binary()], binary(), undefined | inet:port_number()}.
 split_host(<<>>) ->
     {[], <<>>, undefined};
 split_host(Host) ->

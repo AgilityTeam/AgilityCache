@@ -31,28 +31,34 @@
 %%
 
 -spec new(Transport :: module(), ServerSocket :: inet:socket(), Timeout :: non_neg_integer(), MaxEmptyLines :: non_neg_integer()) -> http_server_state().
+
 new(Transport, ServerSocket, Timeout, MaxEmptyLines) ->
 	#http_server_state{timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport, server_socket=ServerSocket}.
 
 -spec get_http_req(http_server_state()) -> {#http_req{}, http_server_state()}.
+
 get_http_req(#http_server_state{http_req = HttpReq} = State) ->
 	{HttpReq, State}.
 
 -spec set_http_req(#http_req{}, http_server_state()) -> http_server_state().
+
 set_http_req(HttpReq, State) ->
 	State#http_server_state{http_req = HttpReq}.
 
 %% @todo improve this spec
 -spec read_request(http_server_state()) -> {ok, http_server_state()} | {error, any(), http_server_state()}.
+
 read_request(State) ->
 	wait_request(State).
 
 -spec read_keepalive_request(non_neg_integer(), http_server_state()) -> {ok, http_server_state()} | {error, any(), http_server_state()}.
+
 read_keepalive_request(KeepAliveTimeout, State) ->
 	wait_keepalive_request(KeepAliveTimeout, State).
 
 -spec get_body(http_server_state()) -> {ok, iolist(), http_server_state()} | {error, any(), http_server_state()}.
 %% Empty buffer
+
 get_body(State=#http_server_state{
              server_socket=Socket, transport=Transport, timeout=T, server_buffer= <<>>})->
 	case Transport:recv(Socket, 0, T) of
@@ -70,6 +76,7 @@ get_body(State=#http_server_state{server_buffer=Buffer})->
 	{ok, Buffer, State#http_server_state{server_buffer = <<>>}}.
 
 -spec send_data(iolist(), http_server_state()) -> {ok, http_server_state()} | {error, any(), http_server_state()}.
+
 send_data(Data, State = #http_server_state { transport = Transport, server_socket = Socket } ) ->
 	case Transport:send(Socket, Data) of
 		ok ->
@@ -79,6 +86,7 @@ send_data(Data, State = #http_server_state { transport = Transport, server_socke
 	end.
 
 -spec stop(keepalive | close, http_server_state()) -> {ok, http_server_state()}.
+
 stop(keepalive, State) ->
 	{ok, State};
 stop(close, State) ->
@@ -89,6 +97,7 @@ stop(close, State) ->
 %%
 
 -spec close(http_server_state()) -> {ok, http_server_state()}.
+
 close(State = #http_server_state{transport=Transport, server_socket=Socket}) ->
 	case Socket of
 		undefined ->
@@ -98,6 +107,7 @@ close(State = #http_server_state{transport=Transport, server_socket=Socket}) ->
 			{ok, State#http_server_state{server_socket=Socket}}
 	end.
 
+-spec wait_request(agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error','closed' | {'http_error',400 | 408 | 500 | 501},agilitycache_http_server:http_server_state()}.
 wait_request(State=#http_server_state{server_socket=Socket, transport=Transport,
                                       timeout=T, server_buffer=Buffer}) ->
 	case Transport:recv(Socket, 0, T) of
@@ -109,6 +119,7 @@ wait_request(State=#http_server_state{server_socket=Socket, transport=Transport,
 			{error, closed, State}
 	end.
 
+-spec wait_keepalive_request(_,agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error','closed' | {'http_error',400 | 408 | 500 | 501},agilitycache_http_server:http_server_state()}.
 wait_keepalive_request(KeepAliveTimeout, State=#http_server_state{server_socket=Socket, transport=Transport, server_buffer=Buffer}) ->
 	case Transport:recv(Socket, 0, KeepAliveTimeout) of
 		{ok, Data} ->
@@ -121,6 +132,7 @@ wait_keepalive_request(KeepAliveTimeout, State=#http_server_state{server_socket=
 
 
 %% @todo Use decode_packet options to limit length?
+-spec start_parse_request(agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error','closed' | {'http_error',400 | 408 | 500 | 501},agilitycache_http_server:http_server_state()}.
 start_parse_request(State=#http_server_state{server_buffer=Buffer}) ->
                                                 %lager:debug("~p Nova requisição...~n", [self()]),
 	case erlang:decode_packet(http_bin, Buffer, []) of
@@ -132,6 +144,7 @@ start_parse_request(State=#http_server_state{server_buffer=Buffer}) ->
 			{error, {http_error, 400}, State}
 	end.
 
+-spec parse_request('http_eoh' | binary() | maybe_improper_list(binary() | maybe_improper_list(any(),binary() | []) | byte(),binary() | []) | {'http_error',binary() | string()} | {'http_request','DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'POST' | 'PUT' | 'TRACE' | binary() | string(),'*' | binary() | string() | {'abs_path',binary() | [any()]} | {'scheme',binary() | [any()],binary() | [any()]} | {'absoluteURI','http' | 'https',binary() | [any()],'undefined' | non_neg_integer(),binary() | [any()]},{non_neg_integer(),non_neg_integer()}} | {'http_response',{non_neg_integer(),non_neg_integer()},integer(),binary() | string()} | {'http_header',integer(),atom() | binary() | string(),_,binary() | string()},agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error','closed' | {'http_error',400 | 408 | 500 | 501},agilitycache_http_server:http_server_state()}.
 parse_request({http_request, Method, {abs_path, AbsPath}, Version}, State = #http_server_state{server_socket = Socket, transport=Transport}) ->
 	{_, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
 	ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
@@ -197,6 +210,7 @@ parse_request({http_error, _Any}, State) ->
 parse_request(_Shit, State) ->
 	{error, {http_error, 500}, State}.
 
+-spec start_parse_request_header(agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error',{'http_error',400 | 408 | 500},agilitycache_http_server:http_server_state()}.
 start_parse_request_header(State=#http_server_state{server_buffer=Buffer}) ->
 	case erlang:decode_packet(httph_bin, Buffer, []) of
 		{ok, Header, Rest} ->
@@ -207,6 +221,7 @@ start_parse_request_header(State=#http_server_state{server_buffer=Buffer}) ->
 			{error, {http_error, 400}, State}
 	end.
 
+-spec wait_request_header(agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error',{'http_error',400 | 408 | 500},agilitycache_http_server:http_server_state()}.
 wait_request_header(State=#http_server_state{server_socket=Socket, transport=Transport, timeout=T, server_buffer=Buffer}) ->
 	case Transport:recv(Socket, 0, T) of
 		{ok, Data} ->
@@ -217,6 +232,7 @@ wait_request_header(State=#http_server_state{server_socket=Socket, transport=Tra
 			{error, {http_error, 500}, State}
 	end.
 
+-spec parse_request_header('http_eoh' | {'http_error',binary() | string()} | {'http_header',integer(),atom() | binary(),_,binary() | string()},agilitycache_http_server:http_server_state()) -> {'ok',agilitycache_http_server:http_server_state()} | {'error',{'http_error',400 | 408 | 500},agilitycache_http_server:http_server_state()}.
 parse_request_header({http_header, _I, 'Host', _R, RawHost}, State = #http_server_state{transport=Transport,
 	                  http_req=Req=#http_req{uri=Uri=#http_uri{domain=undefined}}}) ->
 	RawHost2 = cowboy_bstr:to_lower(RawHost),

@@ -2,9 +2,12 @@
 -export([find_file/1, get_best_filepath/1]).
 -define(APPLICATION, agilitycache).
 
+-include("cache.hrl").
+
 %%-spec find_file(binary())
 %% FileId is a md5sum in binary format
 %% Devo aceitar mais de uma localização?
+-spec find_file(cache_file_id()) -> {'error','notfound'} | {'ok',binary() | string()}.
 find_file(FileId) ->
   Paths = [ proplists:get_value(path, X) || X <- agilitycache_utils:get_app_env(?APPLICATION, cache_dirs, []) ],
   lager:debug("Paths: ~p", [Paths]),
@@ -22,6 +25,7 @@ find_file(FileId) ->
   end.
 
 
+-spec get_best_filepath(_) -> {'error',_} | {'ok',binary() | string()}.
 get_best_filepath(FileId) ->
   case agilitycache_path_chooser:get_best_path(agilitycache_utils:get_app_env(?APPLICATION, cache_dirs, [])) of
     {error, Cause} ->
@@ -30,6 +34,7 @@ get_best_filepath(FileId) ->
       {ok, filename:join([Path, get_subpath(FileId)])}
   end.
 
+-spec get_subpath(cache_file_id()) -> binary() | string().
 get_subpath(FileId) ->
   HexFileId = agilitycache_utils:hexstring(FileId),
   filename:join([io_lib:format("~c", [binary:at(HexFileId, 1)]), io_lib:format("~c", [binary:at(HexFileId, 20)]), HexFileId]).

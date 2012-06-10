@@ -34,7 +34,7 @@
 
 -record(http_uri, {
             domain         = undefined :: undefined | binary(),
-            port           = undefined :: undefined | inet:ip_port(),
+            port           = undefined :: undefined | inet:port_number(),
             path           = <<"/">>   :: iodata(),
             query_string   = <<>>      :: iodata()
            }).
@@ -43,7 +43,7 @@
             %% Request.
             method         = 'GET'     :: http_method(),
             version        = {1, 1}    :: http_version(),
-            peer           = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
+            peer           = undefined :: undefined | {inet:ip_address(), inet:port_number()},
             uri            = undefined :: undefined | #http_uri{},
             headers        = []        :: http_headers(),
             connection     = keepalive :: keepalive | close,
@@ -55,7 +55,7 @@
             status         = 200       :: http_status(),
             version        = {1, 1}    :: http_version(),
             string         = <<>>      :: iodata(),
-            peer           = undefined :: undefined | {inet:ip_address(), inet:ip_port()},
+            peer           = undefined :: undefined | {inet:ip_address(), inet:port_number()},
             headers        = []        :: http_headers(),
             connection     = keepalive :: keepalive | close,
             content_length = undefined :: undefined | non_neg_integer()

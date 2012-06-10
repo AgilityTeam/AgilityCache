@@ -11,7 +11,7 @@
 		expires/2
 	]).
 
--include("http.hrl").
+-include("cache.hrl").
 
 -spec name() -> binary().
 name() ->
@@ -30,7 +30,7 @@ cacheable(_HttpReq, _HttpRep) ->
   erlang:error(not_implemented).
 
 %% Nunca deve chamar isto
--spec file_id(#http_req{}) -> binary().
+-spec file_id(#http_req{}) -> cache_file_id().
 file_id(_HttpReq) ->
 	erlang:error(not_implemented).
 

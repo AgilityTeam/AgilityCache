@@ -28,10 +28,13 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+-spec open(_,atom() | pid() | {atom(),_} | {'via',_,_}) -> 'ok'.
 open(FileId, Pid) ->
   gen_server:cast(Pid, {open, FileId}).
+-spec write(_,atom() | pid() | {atom(),_} | {'via',_,_}) -> 'ok'.
 write(Data, Pid) ->
   gen_server:cast(Pid, {write, Data}).
+-spec close(atom() | pid() | {atom(),_} | {'via',_,_}) -> 'ok'.
 close(Pid) ->
   gen_server:cast(Pid, close).
 
@@ -42,9 +45,11 @@ close(Pid) ->
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
         gen_server:start_link(?SERVER, [], []).
 
+-spec start() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start() ->
   gen_server:start(?SERVER, [], []).
 
@@ -63,6 +68,7 @@ start() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
+-spec init(_) -> none().
 init([]) ->
         {ok, #state{}}.
 
@@ -80,6 +86,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_call(_,_,_) -> {'reply','ok',_}.
 handle_call(_Request, _From, State) ->
         Reply = ok,
         {reply, Reply, State}.
@@ -94,6 +101,7 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_cast(_,_) -> {'noreply',_} | {'stop',{'error',atom()},#state{}}.
 handle_cast({open, FileId}, State) ->
   try
     {ok, Path} = agilitycache_cache_dir:get_best_filepath(FileId),
@@ -135,6 +143,7 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
         {noreply, State}.
 
@@ -149,6 +158,7 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
+-spec terminate(_,#state{}) -> 'ok'.
 terminate(_Reason, State) ->
   close_file(State),
   ok.
@@ -161,12 +171,14 @@ terminate(_Reason, State) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
+-spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
         {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec close_file(#state{}) -> 'ok'.
 close_file(#state{file_handle=undefined}) ->
   ok;
 close_file(#state{file_handle=FileHandle}) ->

@@ -34,44 +34,55 @@
 -include("http.hrl").
 
 -spec method(#http_req{}) -> {http_method(), #http_req{}}.
+
 method(#http_req{ method = Method} = Req) ->
 	{Method, Req}.
 
 -spec version(#http_req{}) -> {http_version(), #http_req{}}.
+
 version(#http_req{ version = Version} = Req) ->
 	{Version, Req}.
 
 %% Pré-calculado ao iniciar conexão
--spec peer(#http_req{}) -> {{inet:ip_address(), inet:ip_port()}, #http_req{}}.
+-spec peer(#http_req{}) -> {{inet:ip_address(), inet:port_number()}, #http_req{}}.
+
 peer(#http_req{ peer = Peer} = Req) ->
 	{Peer, Req}.
 
 -spec uri(#http_req{}) -> {#http_uri{}, #http_req{}}.
+
 uri(#http_req{ uri = Uri} = Req) ->
 	{Uri, Req}.
 -spec uri_domain(#http_req{}) -> {undefined | binary(), #http_req{}}.
+
 uri_domain(#http_req{ uri = #http_uri{ domain = Domain} } = Req) ->
 	{Domain, Req}.
--spec uri_port(#http_req{}) -> {inet:ip_port(), #http_req{}}.
+-spec uri_port(#http_req{}) -> {inet:port_number(), #http_req{}}.
+
 uri_port(#http_req{ uri = #http_uri{ port = Port} } = Req) ->
 	{Port, Req}.
 -spec uri_path(#http_req{}) -> {iodata(), #http_req{}}.
+
 uri_path(#http_req{ uri = #http_uri{ path = Path} } = Req) ->
 	{Path, Req}.
 -spec uri_query_string(#http_req{}) -> {iodata(), #http_req{}}.
+
 uri_query_string(#http_req{ uri = #http_uri{ query_string = Qs} } = Req) ->
 	{Qs, Req}.
 
 -spec headers(#http_req{}) -> {http_headers(), #http_req{}}.
+
 headers(#http_req{ headers = Headers} = Req) ->
 	{Headers, Req}.
 
 -spec connection(#http_req{}) -> {keepalive | close, #http_req{}}.
+
 connection(#http_req{ connection = Connection} = Req) ->
 	{Connection, Req}.
 
 -spec content_length(#http_req{}) ->
 		                    {undefined | non_neg_integer(), #http_req{}}.
+
 content_length(#http_req{content_length=undefined} = Req) ->
 	{Length, Req1} = case header('Content-Length', Req) of
 		                 {L1, Req_1} when is_binary(L1) ->
@@ -98,12 +109,14 @@ content_length(#http_req{content_length=ContentLength} = Req) ->
 %% @equiv header(Name, Req, undefined)
 -spec header(http_header(), #http_req{})
             -> {iodata() | undefined, #http_req{}}.
+
 header(Name, Req) when is_atom(Name) orelse is_binary(Name) ->
 	header(Name, Req, undefined).
 
 %% @doc Return the header value for the given key, or a default if missing.
 -spec header(http_header(), #http_req{}, Default)
             -> {iodata() | Default, #http_req{}} when Default::any().
+
 header(Name, #http_req{ headers = Headers} = Req, Default) when is_atom(Name) orelse is_binary(Name) ->
 	case lists:keyfind(Name, 1, Headers) of
 		{Name, Value} -> {Value, Req};
@@ -112,13 +125,14 @@ header(Name, #http_req{ headers = Headers} = Req, Default) when is_atom(Name) or
 
 %% Response API.
 
--spec reply(agilitycache_http_server:agilitycache_http_server_state(),
+-spec reply(agilitycache_http_server:http_server_state(),
             http_status(),
             http_headers(),
             iodata(),
             #http_req{}) ->
 			   {ok, #http_req{},
-			    agilitycache_http_server:agilitycache_http_server_state()} | {error, any(), any()}.
+			    agilitycache_http_server:http_server_state()} | {error, any(), any()}.
+
 reply(HttpServer, Code, Headers, Body, Req) ->
 	{ok, Req0, HttpServer0} = start_reply(HttpServer, Code, Headers, iolist_size(Body), Req),
 	case agilitycache_http_server:send_data(Body, HttpServer0) of
@@ -128,13 +142,14 @@ reply(HttpServer, Code, Headers, Body, Req) ->
 			Error
 	end.
 
--spec start_reply(agilitycache_http_server:agilitycache_http_server_state(),
+-spec start_reply(agilitycache_http_server:http_server_state(),
             http_status(),
             http_headers(),
             non_neg_integer(),
             #http_req{}) ->
 			   {ok, #http_req{},
-			    agilitycache_http_server:agilitycache_http_server_state()} | {error, any(), any()}.
+			    agilitycache_http_server:http_server_state()} | {error, any(), any()}.
+
 start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, version=Version}) ->
 	MyHeaders0 = [
 	              {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
@@ -159,6 +174,7 @@ start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connecti
 	end.
 
 -spec request_head(#http_req{}) -> iodata().
+
 request_head(Req) ->
 	{Major, Minor} = Req#http_req.version,
 	Majorb = list_to_binary(integer_to_list(Major)),

@@ -24,6 +24,7 @@ read_preliminar_info(FileId, CachedFileInfo) ->
   end.
 
 %% Assumo que já leu o preliminar info
+-spec read_remaining_info(_,_) -> {'error',_} | {'ok',_}.
 read_remaining_info(FileId, CachedFileInfo) ->
   try
     {ok, _CachedFileInfo0} = read_cached_file_info(FileId, <<"headers">>, CachedFileInfo)
@@ -35,6 +36,7 @@ read_remaining_info(FileId, CachedFileInfo) ->
       {error, Error}
   end.
 
+-spec read_cached_file_info(cache_file_id(),_,_) -> {'error',atom()} | {'ok',_}.
 read_cached_file_info(FileId, Info, CachedFileInfo) ->
   case find_file(FileId, Info) of
     {error, _} = Error ->
@@ -47,6 +49,7 @@ read_cached_file_info(FileId, Info, CachedFileInfo) ->
           Error0
       end
   end.
+-spec write_cached_file_info(cache_file_id(),_,#cached_file_info{}) -> 'ok' | {'error',atom()}.
 write_cached_file_info(FileId, Info, CachedFileInfo) ->
   Path = case find_file(FileId, Info) of
     {ok, Path1} ->
@@ -67,6 +70,7 @@ write_cached_file_info(FileId, Info, CachedFileInfo) ->
       ok
   end.
 
+-spec write_info(cache_file_id(),#cached_file_info{}) -> 'ok'.
 write_info(FileId, CachedFileInfo) ->
   ok = write_cached_file_info(FileId, <<"headers">>, CachedFileInfo),
   ok = write_cached_file_info(FileId, <<"status_code">>, CachedFileInfo),
@@ -78,6 +82,7 @@ write_info(FileId, CachedFileInfo) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec generate_data(_,#cached_file_info{}) -> binary() | [[binary() | maybe_improper_list(any(),binary() | []),...]] | non_neg_integer().
 generate_data(<<"headers">>, #cached_file_info { http_rep = #http_rep { headers = Headers } }) ->
   lager:debug("Headers: ~p", [Headers]),
   Headers0 = [begin
@@ -103,6 +108,7 @@ generate_data(<<"age">>, #cached_file_info { age = Age } ) ->
   {ok, Age0} = agilitycache_date_time:generate_simple_string(Age),
   Age0.
 
+-spec decode_headers(binary(),_) -> {'error',_} | {'ok',_}.
 decode_headers(Data, CachedFileInfo) ->
   case erlang:decode_packet(httph_bin, Data, []) of
     {ok, Header, Rest} ->
@@ -111,6 +117,7 @@ decode_headers(Data, CachedFileInfo) ->
       {error, Error}
   end.
 
+-spec parse_data(<<_:24,_:_*32>>,binary(),_) -> {'error',_} | {'ok',_}.
 parse_data(<<"headers">>, Data, CachedFileInfo) ->
   decode_headers(<<Data/binary, "\r\n">>, CachedFileInfo);
 
@@ -141,6 +148,7 @@ parse_data(<<"age">>, Data, CachedFileInfo) ->
 %%-spec find_file(binary(), binary())
 %% FileId is a md5sum in binary format
 %% Devo aceitar mais de uma localização?
+-spec find_file(cache_file_id(),_) -> {'error','notfound'} | {'ok',binary() | string()}.
 find_file(FileId, Extension) ->
   Paths1 = agilitycache_utils:get_app_env(database, undefined),
   Paths2 = lists:map(fun(X) -> proplists:get_value(path, X) end, Paths1),
@@ -154,11 +162,14 @@ find_file(FileId, Extension) ->
       {ok, erlang:hd(FoundPaths)}
   end.
 
+-spec get_subpath(cache_file_id()) -> binary() | string().
 get_subpath(FileId) ->
   HexFileId = agilitycache_utils:hexstring(FileId),
   filename:join([io_lib:format("~c", [binary:at(HexFileId, 1)]), io_lib:format("~c", [binary:at(HexFileId, 20)]), HexFileId]).
 
 %% Desabilita keepalive
+-spec parse_headers('http_eoh' | {'http_error',binary() | string()} | {'http_header',integer(),atom() | binary(),_,binary() | string()},_,binary())
+                   -> {error, _} | {'ok',_}.
 parse_headers({http_header, _I, 'Connection', _R, _Connection}, CachedFileInfo = #cached_file_info{ http_rep = Rep }, Rest) ->
   ConnAtom = close,
   decode_headers(Rest, CachedFileInfo#cached_file_info{ http_rep =

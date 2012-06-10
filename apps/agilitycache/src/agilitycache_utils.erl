@@ -3,10 +3,12 @@
 
 %% @equiv header(agilitycache, Key, Default)
 -spec get_app_env(atom(), Default::any()) -> Default::any().
+
 get_app_env(Key, Default) ->
   get_app_env(agilitycache, Key, Default).
 
 -spec get_app_env(atom(), any(), any()) -> any().
+
 get_app_env(App, Key, Default) ->
   case application:get_env(App, Key) of
     undefined ->
@@ -18,5 +20,6 @@ get_app_env(App, Key, Default) ->
     end.
 
 -spec hexstring(binary()) -> binary().
+
 hexstring(<<X:128/big-unsigned-integer>>) ->
   list_to_binary(lists:flatten(io_lib:format("~32.16.0B", [X]))).

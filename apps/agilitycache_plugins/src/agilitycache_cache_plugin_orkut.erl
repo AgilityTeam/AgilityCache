@@ -3,9 +3,9 @@
 
 %% vimerl compile fix
 -ifdef(VIMERL).
--include("../agilitycache/include/http.hrl").
+-include("../agilitycache/include/cache.hrl").
 -else.
--include_lib("agilitycache/include/http.hrl").
+-include_lib("agilitycache/include/cache.hrl").
 -endif.
 
 -export([
@@ -42,7 +42,7 @@ cacheable(_HttpReq) ->
 cacheable(_HttpReq, _HttpRep) ->
 	true.
 
--spec file_id(#http_req{}) -> binary().
+-spec file_id(#http_req{}) -> cache_file_id().
 file_id(_HttpReq = #http_req{ uri=_Uri=#http_uri{path = RawPath, port = Port }}) ->
 	%%"http://Plugin." + name() + "/" + request.cannonical_url;
 	Name = name(),

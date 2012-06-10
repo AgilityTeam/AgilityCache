@@ -2,7 +2,8 @@
 
 -export([get_best_path/1]).
 
--spec get_best_path(list() | undefined) -> {ok, binary() | string()} | {error, any()}. 
+-spec get_best_path(list() | undefined) -> {ok, binary() | string()} | {error, any()}.
+
 get_best_path(undefined) ->
   {error, <<"Invalid path list">>};
 %% @todo Improve checks
@@ -16,6 +17,7 @@ get_best_path(Paths) ->
   end.
 
 -spec get_least_used(list()) -> list() | {error, any()}.
+
 get_least_used(Paths) ->
   Paths2 = lists:map(fun(X) -> Mpath = proplists:get_value(path, X),
         {_, TotalSize, Used} = get_path_info(Mpath),
@@ -23,18 +25,20 @@ get_least_used(Paths) ->
   lists:keysort(3, Paths2).
 
 -spec get_path_info(binary() | list()) -> {binary() | list(), integer(), integer()} | {error, any()}.
+
 get_path_info(Path) when is_list(Path) ->
   get_path_info(list_to_binary(Path));
 get_path_info(Path) when is_binary(Path)->
   FileSystems = disksup:get_disk_data(),
   case lists:keyfind(binary_to_list(Path), 1, FileSystems) of
-    false ->            
+    false ->
       get_path_info(lists:reverse(filename:split(Path)), FileSystems);
     {FileSystem, TotalSize, Used} ->
       {FileSystem, TotalSize, Used}
   end.
 
--spec get_path_info(list(), {string(), integer(), integer()}) -> {binary() | list(), integer(), integer()} | {error, any()}.
+-spec get_path_info(list(), list({string(), integer(), integer()})) -> {binary() | list(), integer(), integer()} | {error, any()}.
+
 get_path_info([], _) ->
   {error, notfound};
 get_path_info([_|[]], _) ->
