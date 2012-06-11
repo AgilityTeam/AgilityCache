@@ -22,7 +22,7 @@
 -record(state, {
       file_id = <<>> :: binary(),
       file_path = <<>> :: binary(),
-      file_handle = undefined :: file:io_device()
+      file_handle = undefined :: file:io_device() | undefined
       }).
 
 %%%===================================================================
@@ -68,7 +68,7 @@ start() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec init(_) -> none().
+-spec init(_) -> {ok, #state{}}.
 init([]) ->
         {ok, #state{}}.
 

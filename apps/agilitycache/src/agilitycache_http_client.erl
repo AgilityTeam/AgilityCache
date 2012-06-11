@@ -26,7 +26,7 @@
           cache_id = <<>> :: binary(),
           cache_info = #cached_file_info{} :: #cached_file_info{},
           cache_file_path = <<>> :: binary(),
-          cache_file_helper, %% Que tipo usar para um pid que não dê pau no dialyzer?
+          cache_file_helper = undefined :: pid(), %% Que tipo usar para um pid que não dê pau no dialyzer?
           cache_file_handle,
           cache_http_req %% Only set and used when cache_status = miss
          }).
