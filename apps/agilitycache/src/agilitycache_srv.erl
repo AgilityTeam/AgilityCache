@@ -166,7 +166,8 @@ start_metrics() ->
 	folsom_sup:start_link(),
 	folsom_metrics:new_meter(requests),
 	folsom_metrics:new_histogram(resolve_time),
-	folsom_metrics:new_histogram(connection_time).
+	folsom_metrics:new_histogram(connection_time),
+	folsom_metrics:new_histogram(total_proxy_time).
 
 -spec start_tables() -> {'aborted',_} | {'atomic',_}.
 start_tables() ->
