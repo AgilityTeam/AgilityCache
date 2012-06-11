@@ -259,33 +259,35 @@ start_stop(normal, State = #state{keepalive=disabled, start_time=StartTime}) ->
 start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
                                   listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout,
                                   start_time=StartTime}) ->
-	{HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-	{HttpRep, _HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
+	{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
+	{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
 	case {KeepAliveType, HttpReq#http_req.connection, HttpRep#http_rep.connection} of
 		{both, keepalive, keepalive} ->
 			lager:debug("Keepalive both stop"),
 			ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
 			RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, KeepAliveDefaultTimeout)*1000,
 			KeepAliveTimeout = min(ReqKeepAliveTimeout, RepKeepAliveTimeout),
-			{ok, HttpServer1} = do_stop_server(keepalive, State),
-			{ok, HttpClient1} = do_stop_client(keepalive, State),
+			do_stop_server(keepalive, State),
+			do_stop_client(keepalive, State),
 			EndTime = os:timestamp(),
 			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
-			start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer1, http_client=HttpClient1,
+			start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer0, http_client=HttpClient0,
 			                                                             timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
 			                                                             listener=ListenerPid, keepalive=true,
-			                                                             keepalive_default_timeout=KeepAliveDefaultTimeout});
+			                                                             keepalive_default_timeout=KeepAliveDefaultTimeout,
+			                                                             start_time=os:timestamp()});
 		{_, keepalive, close} ->
 			lager:debug("Keepalive HttpServer stop"),
-			{ok, HttpServer1} = do_stop_server(keepalive, State),
-			{ok, _HttpClient1} = do_stop_client(close, State),
-			HttpServer2 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer1), %% Vazio
+			do_stop_server(keepalive, State),
+			do_stop_client(close, State),
+			HttpServer2 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
 			KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
 			EndTime = os:timestamp(),
 			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
 			start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer2, timeout=Timeout, max_empty_lines=MaxEmptyLines,
 			                                                            transport=Transport, listener=ListenerPid, keepalive=true,
-			                                                            keepalive_default_timeout=KeepAliveDefaultTimeout});
+			                                                            keepalive_default_timeout=KeepAliveDefaultTimeout,
+			                                                            start_time=os:timestap()});
 		_ ->
 			EndTime = os:timestamp(),
 			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
