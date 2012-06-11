@@ -100,9 +100,8 @@ response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     Minorb = list_to_binary(integer_to_list(VMinor)),
     StatusLine = <<"HTTP/", Majorb/binary, ".", Minorb/binary, " ", (agilitycache_http_protocol_parser:status(Status))/binary, "\r\n">>,
     Headers2 = [{agilitycache_http_protocol_parser:header_to_binary(Key), Value} || {Key, Value} <- Headers],
-    Headers3 = lists:ukeysort(1, Headers2),
-    DefaultHeaders0 = lists:ukeysort(1, DefaultHeaders),
-    Headers4 = lists:ukeymerge(1, DefaultHeaders0, Headers3),
+    lager:debug("Headers2: ~p", [Headers2]),
+    Headers4 = Headers2 ++ DefaultHeaders,
     lager:debug("Headers4: ~p", [Headers4]),
     Headers5 = [<< Key/binary, ": ", Value/binary, "\r\n" >>
 		    || {Key, Value} <- Headers4],
