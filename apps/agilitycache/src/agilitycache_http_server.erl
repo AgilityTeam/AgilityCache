@@ -12,6 +12,7 @@
 %% Exported Functions
 %%
 -export([new/4, read_request/1, read_keepalive_request/2, get_body/1, send_data/2, get_http_req/1, set_http_req/2, stop/2]).
+-export([get_socket/1]).
 
 -record(http_server_state, {
             http_req :: #http_req{},
@@ -44,6 +45,10 @@ get_http_req(#http_server_state{http_req = HttpReq} = State) ->
 
 set_http_req(HttpReq, State) ->
 	State#http_server_state{http_req = HttpReq}.
+
+-spec get_socket(http_server_state()) -> inet:socket().
+get_socket(#http_server_state{server_socket = Socket}) ->
+	Socket.
 
 %% @todo improve this spec
 -spec read_request(http_server_state()) -> {ok, http_server_state()} | {error, any(), http_server_state()}.

@@ -12,6 +12,7 @@
 %% Exported Functions
 %%
 -export([new/3, start_request/2, start_keepalive_request/2, start_receive_reply/1, get_http_rep/1, set_http_rep/2, get_body/1, send_data/2, stop/2]).
+-export([get_socket/1]).
 
 -record(http_client_state, {
           http_rep :: #http_rep{} | undefined,
@@ -49,6 +50,10 @@ get_http_rep(#http_client_state{http_rep = HttpRep} = State) ->
 -spec set_http_rep(#http_rep{}, http_client_state()) -> http_client_state().
 set_http_rep(HttpRep, State) ->
 	State#http_client_state{http_rep = HttpRep}.
+
+-spec get_socket(http_client_state()) -> inet:socket().
+get_socket(#http_client_state{client_socket = Socket}) ->
+	Socket.
 
 -spec start_request(#http_req{}, http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
 start_request(HttpReq, State) ->
