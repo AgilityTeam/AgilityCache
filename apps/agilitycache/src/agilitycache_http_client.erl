@@ -375,17 +375,17 @@ check_pre_cacheability(HttpReq, State = #http_client_state{cache_plugin = Plugin
 check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
 	FileId = Plugin:file_id(HttpReq),
 	lager:debug("FileId: ~p <-> ~p~n", [agilitycache_utils:hexstring(FileId), FileId]),
+
 	case agilitycache_cache_dir:find_file(FileId) of
 		{error, _} ->
 			lager:debug("Cache Miss"),
-			Fun1 = fun() ->
-					       case mnesia:wread({agilitycache_transit_file, FileId}) of
-						       [] ->
-							       mnesia:write(#agilitycache_transit_file{ id = FileId, status = downloading}),
-							       ok;
-						       [_Record] ->
-							       error
-					       end
+			Fun1 = fun() -> case mnesia:wread({agilitycache_transit_file, FileId}) of
+				                [] ->
+					                mnesia:write(#agilitycache_transit_file{ id = FileId, status = downloading}),
+					                ok;
+				                [_Record] ->
+					                error
+			                end
 			       end,
 			case mnesia:transaction(Fun1) of
 				{atomic, ok} ->
@@ -395,70 +395,76 @@ check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
 					Fun(HttpReq, State#http_client_state{cache_status = undefined})
 			end;
 		{ok, Path} ->
-			case agilitycache_database:read_preliminar_info(FileId, #cached_file_info{}) of
-				{ok, CachedFileInfo0 = #cached_file_info{max_age = MaxAge0}} ->
-					MaxAge = calendar:datetime_to_gregorian_seconds(MaxAge0),
-					Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
-					case Now < MaxAge of
-						true ->
-							lager:debug("Cache Hit: ~p", [Path]),
-							lager:debug("MaxAge: ~p", [MaxAge]),
-							Fun2 = fun() ->
-									       case mnesia:wread({agilitycache_transit_file, FileId}) of
-										       [] ->
-											       mnesia:write(#agilitycache_transit_file{ id = FileId, status = reading, concurrent_readers = 1}),
-											       lager:debug("Mnesia empty"),
-											       ok;
-										       [Record = #agilitycache_transit_file{ status = reading, concurrent_readers = CR}] when CR >= 1 ->
-											       lager:debug("Mnesia concurrent"),
-											       mnesia:write(Record#agilitycache_transit_file{concurrent_readers = CR + 1}),
-											       lager:debug("Mnesia concurrent_readers: ~p", [CR + 1]),
-											       ok;
-										       Er32 ->
-											       lager:debug("Mnesia error: ~p", [Er32]),
-											       error
-									       end
-							       end,
-							case mnesia:transaction(Fun2) of
-								{atomic, ok} ->
-									{ok, HttpReq,
-									 State#http_client_state{cache_status = hit, cache_info = CachedFileInfo0, cache_id = FileId, cache_file_path = Path}};
-								{atomic, error} ->
-									lager:debug("Denied by mnesia"),
-									Fun(HttpReq, State#http_client_state{cache_status = undefined})
-							end;
-						false ->
-							%% Expired
-							%% Não manusear por enquanto
-							lager:debug("Expired!, MaxAge: ~p", [MaxAge]),
-							Fun3 = fun() ->
-									       case mnesia:wread({agilitycache_transit_file, FileId}) of
-										       [] ->
-											       mnesia:write(#agilitycache_transit_file{ id = FileId, status = downloading}),
-											       ok;
-										       [_Record] ->
-											       error
-									       end
-							       end,
-							case mnesia:transaction(Fun3) of
-								{atomic, ok} ->
-									Fun(HttpReq, State#http_client_state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
-								{atomic, error} ->
-									lager:debug("Denied by mnesia"),
-									Fun(HttpReq, State#http_client_state{cache_status = undefined})
-							end
-					end;
-				{error, _} = Z ->
-					lager:debug("Database error: ~p", [Z]),
-					Fun(HttpReq, State#http_client_state{cache_status = undefined})
-			end
+			check_hit2(HttpReq, State, FileId, Path, Fun)
 	end.
+
+check_hit2(HttpReq, State, FileId, Path, Fun) ->
+	case agilitycache_database:read_preliminar_info(FileId, #cached_file_info{}) of
+		{ok, CachedFileInfo0 = #cached_file_info{max_age = MaxAge0}} ->
+			MaxAge = calendar:datetime_to_gregorian_seconds(MaxAge0),
+			Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+			handle_expired(Now > MaxAge, HttpReq, State, FileId, Path, MaxAge, CachedFileInfo0, Fun);
+		{error, _} = Z ->
+			lager:debug("Database error: ~p", [Z]),
+			Fun(HttpReq, State#http_client_state{cache_status = undefined})
+	end.
+handle_expired(false, HttpReq, State, FileId, Path, MaxAge, CachedFileInfo, Fun) ->
+	lager:debug("Cache Hit: ~p", [Path]),
+	lager:debug("MaxAge: ~p", [MaxAge]),
+	Fun2 = fun() -> case mnesia:wread({agilitycache_transit_file, FileId}) of
+		                [] ->
+			                mnesia:write(#agilitycache_transit_file{
+			                                id = FileId,
+			                                status = reading,
+			                                concurrent_readers = 1}),
+			                lager:debug("Mnesia empty"),
+			                ok;
+		                [Record = #agilitycache_transit_file{ status = reading,
+		                                                      concurrent_readers = CR}] when CR >= 1 ->
+			                lager:debug("Mnesia concurrent"),
+			                mnesia:write(Record#agilitycache_transit_file{concurrent_readers = CR + 1}),
+			                lager:debug("Mnesia concurrent_readers: ~p", [CR + 1]),
+			                ok;
+		                Er32 ->
+			                lager:debug("Mnesia error: ~p", [Er32]),
+			                error
+	                end
+	       end,
+	case mnesia:transaction(Fun2) of
+		{atomic, ok} ->
+			{ok, HttpReq,
+			 State#http_client_state{cache_status = hit,
+			                         cache_info = CachedFileInfo, cache_id = FileId, cache_file_path = Path}};
+		{atomic, error} ->
+			lager:debug("Denied by mnesia"),
+			Fun(HttpReq, State#http_client_state{cache_status = undefined})
+	end;
+handle_expired(true, HttpReq, State, FileId, _Path, MaxAge, _CachedFileInfo, Fun) ->
+	%% Expired
+	%% Não manusear por enquanto
+	lager:debug("Expired!, MaxAge: ~p", [MaxAge]),
+	Fun3 = fun() -> case mnesia:wread({agilitycache_transit_file, FileId}) of
+		                [] ->
+			                mnesia:write(#agilitycache_transit_file{ id = FileId, status = downloading}),
+			                ok;
+		                [_Record] ->
+			                error
+	                end
+	       end,
+	case mnesia:transaction(Fun3) of
+		{atomic, ok} ->
+			Fun(HttpReq, State#http_client_state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
+		{atomic, error} ->
+			lager:debug("Denied by mnesia"),
+			Fun(HttpReq, State#http_client_state{cache_status = undefined})
+	end.
+
 
 -spec check_plugins(_,agilitycache_http_client:http_client_state(),
                     fun((_,_) -> _)) -> {'error',_,agilitycache_http_client:http_client_state()} | {'ok',_,agilitycache_http_client:http_client_state()}.
 check_plugins(HttpReq, State, Fun) ->
 	Plugins = agilitycache_utils:get_app_env(plugins, [{cache, []}]),
-	CachePlugins = lists:append([proplists:get_value(cache, Plugins, []), [agilitycache_cache_plugin_default]]),
+	CachePlugins = proplists:get_value(cache, Plugins, []) ++ [agilitycache_cache_plugin_default],
 	lager:debug("CachePlugins: ~p~n", [CachePlugins]),
 	lager:debug("HttpReq: ~p~n", [HttpReq]),
 	InCharge = test_in_charge_plugins(CachePlugins, HttpReq, agilitycache_cache_plugin_default),
