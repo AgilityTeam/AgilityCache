@@ -80,7 +80,8 @@ start_handle_request(#state{http_server=HttpServer} = State) ->
 	end.
 
 -spec start_handle_req_keepalive_request(non_neg_integer(),#state{}) -> 'ok'.
-start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->                                                %%lager:debug("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
+start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
+	%%lager:debug("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
 	case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
 		{ok, HttpServer0} ->
 			read_reply(State#state{http_server=HttpServer0});
@@ -292,7 +293,7 @@ start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient
 			start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer2, timeout=Timeout, max_empty_lines=MaxEmptyLines,
 			                                                            transport=Transport, listener=ListenerPid, keepalive=true,
 			                                                            keepalive_default_timeout=KeepAliveDefaultTimeout,
-			                                                            start_time=os:timestap()});
+			                                                            start_time=os:timestamp()});
 		_ ->
 			EndTime = os:timestamp(),
 			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
@@ -338,18 +339,17 @@ do_basic_loop(State = #state{http_server=HttpServer, http_client=HttpClient, tra
 			Transport:send(ServerSocket, Data),
 			do_basic_loop(State);
 		{tcp_closed, ClientSocket} ->
-			{HttpRep, _HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-			HttpClient1 = agilitycache_http_client:set_http_rep(HttpRep#http_rep{connection=close}),
+			{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
+			HttpClient1 = agilitycache_http_client:set_http_rep(HttpRep#http_rep{connection=close}, HttpClient0),
 			start_stop(normal, State#state{http_client=HttpClient1});
 		{tcp_closed, ServerSocket} ->
-			{HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-			HttpServer1 = agilitycache_http_server:set_http_req(HttpReq#http_req{connection=close}),
+			{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
+			HttpServer1 = agilitycache_http_server:set_http_req(HttpReq#http_req{connection=close}, HttpServer0),
 			start_stop(normal, State#state{http_server=HttpServer1});
 		_ ->
-			{HttpRep, _HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-			HttpClient1 = agilitycache_http_client:set_http_rep(HttpRep#http_rep{connection=close}),
-			{HttpReq, _HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-			HttpServer1 = agilitycache_http_server:set_http_req(HttpReq#http_req{connection=close}),
+			{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
+			HttpClient1 = agilitycache_http_client:set_http_rep(HttpRep#http_rep{connection=close}, HttpClient0),
+			{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
+			HttpServer1 = agilitycache_http_server:set_http_req(HttpReq#http_req{connection=close}, HttpServer0),
 			start_stop(normal, State#state{http_server=HttpServer1, http_client=HttpClient1})
 	end.
-
