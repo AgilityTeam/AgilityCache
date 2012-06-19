@@ -1,355 +1,448 @@
-%% @doc HTTP protocol handler.
-%%
-%% The available options are:
-%% <dl>
-%%  <dt>dispatch</dt><dd>The dispatch list for this protocol.</dd>
-%%  <dt>max_empty_lines</dt><dd>Max number of empty lines before a request.
-%%   Defaults to 5.</dd>
-%%  <dt>timeout</dt><dd>Time in milliseconds before an idle keep-alive
-%%   connection is closed. Defaults to 5000 milliseconds.</dd>
-%% </dl>
-%%
-%% Note that there is no need to monitor these processes when using Cowboy as
-%% an application as it already supervises them under the listener supervisor.
-%%
-%% @see agilitycache_http_handler
+%%%-------------------------------------------------------------------
+%%% @author Joaquim Pedro França Simão <>
+%%% @copyright (C) 2012, Joaquim Pedro França Simão
+%%% @doc
+%%%
+%%% @end
+%%% Created : 15 Jun 2012 by Joaquim Pedro França Simão <>
+%%%-------------------------------------------------------------------
 -module(agilitycache_http_protocol).
 
--export([start_link/4]). %% API.
--export([init/4]). %% FSM.
+-behaviour(gen_fsm).
+
+%% API
+-export([start_link/4]).
+
+%% gen_fsm callbacks
+-export([init/1, handle_event/3, handle_sync_event/4, handle_info/3,
+         terminate/3, code_change/4]).
+-export([start_protocol_loop/4]).
+-export([start_handle_request/3,
+         read_reply/3,
+         start_send_post/3,
+         send_post/3,
+         start_receive_reply/3,
+         start_send_reply/3,
+         do_basic_loop/3,
+         send_reply/3,
+         begin_stop/3,
+         start_handle_req_keepalive_request/3,
+         start_handle_both_keepalive_request/3,
+         read_both_keepalive_reply/3
+        ]).
 
 -include("http.hrl").
 
 -record(state, {
+            http_server :: agilitycache_http_server:http_server_state(),
             http_client :: agilitycache_http_client:http_client_state() | undefined,
-            http_server :: agilitycache_http_server:http_server_state() | undefined,
             listener :: pid(),
             transport :: module(),
             max_empty_lines = 5 :: integer(),
             timeout = 5000 :: timeout(),
             keepalive = both :: both | req | disabled,
             keepalive_default_timeout = 300 :: non_neg_integer(),
-            start_time = 0 :: integer()
+            keepalive_timeout = 0 :: timeout(),
+            start_time = 0 :: integer(),
+            restant = 0 :: integer()
            }).
-%% API.
 
-%% @doc Start an HTTP protocol process.
--spec start_link(pid(), inet:socket(), module(), any()) -> {ok, pid()}.
-
+-spec start_link(pid(), inet:socket(), module(), any()) ->
+		                {ok, pid()}.
 start_link(ListenerPid, Socket, Transport, Opts) ->
-	Pid = spawn_link(?MODULE, init, [ListenerPid, Socket, Transport, Opts]),
+	Pid = spawn_link(?MODULE, start_protocol_loop,
+	                 [ListenerPid, Socket, Transport, Opts]),
 	{ok, Pid}.
+-spec start_protocol_loop(pid(), inet:socket(), module(), any()) ->
+		                         {ok, pid()} | ignore |
+		                         {error, any()}.
+start_protocol_loop(ListenerPid, Socket, Transport, Opts) ->
+	{ok, Pid} = gen_fsm:start_link(?MODULE, {ListenerPid,
+	                                         Socket,
+	                                         Transport, Opts},
+	                               []),
+	%% ACK Cowboy
+	cowboy:accept_ack(ListenerPid),
+	protocol_loop(Pid).
+protocol_loop(Pid) ->
+	case gen_fsm:sync_send_event(Pid, simple, infinity) of
+		ok ->
+			ok;
+		continue ->
+			protocol_loop(Pid)
+	end.
 
-%% FSM.
+init({ListenerPid, ServerSocket, Transport, Opts}) ->
 
-%% @private
--spec init(pid(), inet:socket(), module(), any()) -> ok.
-
-init(ListenerPid, ServerSocket, Transport, Opts) ->
+	%% Instrumentation
 	folsom_metrics:notify({requests, 1}),
 	StartTime = os:timestamp(),
+	%% Options
 	MaxEmptyLines = proplists:get_value(max_empty_lines, Opts, 5),
-	Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
-	cowboy:accept_ack(ListenerPid),
-	BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
-	Transport:setopts(ServerSocket, [
-                                                %{nodelay, true}%, %% We want to be informed even when packages are small
-	                                 {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
-	                                 {send_timeout_close, true}, %%... and therefore the connection should be closed
+	%% If we couldn't send a message in Timeout time something
+	%% is definitively wrong...
+	Timeout = agilitycache_utils:get_app_env(tcp_timeout, 5000),
+	BufferSize = agilitycache_utils:get_app_env(buffer_size,
+	                                            87380),
+	Transport:setopts(ServerSocket, [{send_timeout, Timeout},
+	                                 {send_timeout_close, true},
 	                                 {buffer, BufferSize},
-	                                 {delay_send, true}
-	                                ]),
-	%%lager:debug("ServerSocket buffer ~p",
-	%%  [inet:getopts(ServerSocket, [delay_send])]),
-	HttpServer = agilitycache_http_server:new(Transport, ServerSocket, Timeout, MaxEmptyLines),
-	KeepAliveOpts = agilitycache_utils:get_app_env(agilitycache, keepalive, [{type, both}, {max_timeout, 300}]),
+	                                 {delay_send, true}]),
+	HttpServer = agilitycache_http_server:new(Transport,
+	                                          ServerSocket,
+	                                          Timeout,
+	                                          MaxEmptyLines),
+	KeepAliveOpts = agilitycache_utils:get_app_env(keepalive,
+	                                               [{type, both},
+	                                                {max_timeout,
+	                                                 300}]),
 	KeepAlive = proplists:get_value(type, KeepAliveOpts, both),
-	KeepAliveDefaultTimeout = proplists:get_value(max_timeout, KeepAliveOpts, 300),
-	start_handle_request(#state{http_server=HttpServer, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-	                            listener=ListenerPid, keepalive = KeepAlive, keepalive_default_timeout = KeepAliveDefaultTimeout,
-	                            start_time = StartTime}).
+	KeepAliveDefault = proplists:get_value(max_timeout,
+	                                       KeepAliveOpts,
+	                                       300),
+	{ok, start_handle_request,
+	 #state{http_server=HttpServer,
+	        timeout=Timeout,
+	        max_empty_lines=MaxEmptyLines,
+	        transport=Transport,
+	        listener=ListenerPid,
+	        keepalive = KeepAlive,
+	        keepalive_default_timeout = KeepAliveDefault,
+	        start_time = StartTime}}.
 
--spec start_handle_request(#state{}) -> 'ok'.
-start_handle_request(#state{http_server=HttpServer} = State) ->
-                                                %lager:debug("~p Nova requisição start_handle_request...~n", [self()]),
-	case agilitycache_http_server:read_request(HttpServer) of
-		{ok, HttpServer0} ->
-			read_reply(State#state{http_server=HttpServer0});
-		{error, Reason, HttpServer1} ->
-			start_stop({error, Reason}, State#state{http_server=HttpServer1})
-	end.
+%% Events
 
--spec start_handle_req_keepalive_request(non_neg_integer(),#state{}) -> 'ok'.
-start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
-	%%lager:debug("~p Nova requisição start_handle_req_keepalive_request...~n", [self()]),
-	case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
-		{ok, HttpServer0} ->
-			read_reply(State#state{http_server=HttpServer0});
-		{error, Reason, HttpServer1} ->
-			start_stop({error, Reason}, State#state{http_server=HttpServer1})
-	end.
+start_handle_request(_Event, _From,
+                     #state{http_server=HttpServer} = State) ->
+	{ok, HttpServer0} =
+		agilitycache_http_server:read_request(HttpServer),
+	{reply, continue, read_reply,
+	 State#state{http_server=HttpServer0}}.
 
--spec start_handle_both_keepalive_request(non_neg_integer(),#state{}) -> 'ok'.
-start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer} = State) ->
-	%%lager:debug("~p Nova requisição start_handle_both_keepalive_request...~n", [self()]),
-	case agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer) of
-		{ok, HttpServer0} ->
-			read_both_keepalive_reply(State#state{http_server=HttpServer0});
-		{error, closed, HttpServer1} ->
-			read_reply(State#state{http_server=HttpServer1});
-		{error, Reason, HttpServer1} ->
-			start_stop({error, Reason}, State#state{http_server=HttpServer1})
-	end.
-
--spec read_both_keepalive_reply(#state{}) -> 'ok'.
-read_both_keepalive_reply(#state{http_server=HttpServer, http_client=HttpClient} = State) ->
-	{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-	{ok, HttpReq0, HttpClient0} = agilitycache_http_client:start_keepalive_request(HttpReq, HttpClient),
-	HttpServer1 = agilitycache_http_server:set_http_req(HttpReq0, HttpServer0),
-	case agilitycache_http_protocol_parser:method_to_binary(HttpReq0#http_req.method) of
+read_reply(_Event, _From,
+           #state{http_server=HttpServer, transport=Transport,
+                  timeout=Timeout,
+                  max_empty_lines=MaxEmptyLines} = State) ->
+	{HttpReq, HttpServer0} =
+		agilitycache_http_server:get_http_req(HttpServer),
+	HttpClient =
+		agilitycache_http_client:new(Transport, Timeout,
+		                             MaxEmptyLines),
+	{ok, HttpReq0, HttpClient0} =
+		agilitycache_http_client:start_request(HttpReq,
+		                                       HttpClient),
+	HttpServer1 =
+		agilitycache_http_server:set_http_req(HttpReq0,
+		                                      HttpServer0),
+	Method =
+		agilitycache_http_protocol_parser:method_to_binary(
+		    HttpReq0#http_req.method),
+	case Method of
 		<<"POST">> ->
-			start_send_post(State#state{http_server=HttpServer1, http_client=HttpClient0});
+			{reply, continue, start_send_post,
+			 State#state{http_server=HttpServer1,
+			             http_client=HttpClient0}};
 		_ ->
-			start_receive_reply(State#state{http_server=HttpServer1, http_client=HttpClient0})
+			{reply, continue, start_receive_reply,
+			 State#state{http_server=HttpServer1,
+			             http_client=HttpClient0}}
 	end.
-
-
--spec read_reply(#state{}) -> 'ok'.
-read_reply(#state{http_server=HttpServer, transport=Transport, timeout=Timeout, max_empty_lines=MaxEmptyLines} = State) ->
-	{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-	HttpClient = agilitycache_http_client:new(Transport, Timeout, MaxEmptyLines),
-	{ok, HttpReq0, HttpClient0} = agilitycache_http_client:start_request(HttpReq, HttpClient),
-	HttpServer1 = agilitycache_http_server:set_http_req(HttpReq0, HttpServer0),
-	case agilitycache_http_protocol_parser:method_to_binary(HttpReq0#http_req.method) of
-		<<"POST">> ->
-			start_send_post(State#state{http_server=HttpServer1, http_client=HttpClient0});
-		_ ->
-			start_receive_reply(State#state{http_server=HttpServer1, http_client=HttpClient0})
-	end.
-
--spec start_send_post(#state{}) -> 'ok'.
-start_send_post(State = #state{http_server=HttpServer}) ->
-	{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-	{Length, HttpReq2} = agilitycache_http_req:content_length(HttpReq),
-	HttpServer1 = agilitycache_http_server:set_http_req(HttpReq2, HttpServer0),
-	State2 = State#state{http_server=HttpServer1},
+start_send_post(_Event, _From,
+                #state{http_server=HttpServer} = State) ->
+	{HttpReq, HttpServer0} =
+		agilitycache_http_server:get_http_req(HttpServer),
+	{Length, HttpReq2} =
+		agilitycache_http_req:content_length(HttpReq),
+	HttpServer1 =
+		agilitycache_http_server:set_http_req(HttpReq2,
+		                                      HttpServer0),
 	case Length of
-		undefined ->
-			start_stop({error, <<"POST without length">>}, State2);
 		_ when is_integer(Length) ->
-			send_post(Length, State2)
+			{reply, continue, send_post,
+			 State#state{http_server=HttpServer1,
+			             restant=Length}}
 	end.
-
--spec send_post(number(),#state{}) -> 'ok'.
-send_post(Length, State = #state{http_client=HttpClient, http_server=HttpServer}) ->
-	%% Esperamos que isso seja sucesso, então deixa dar pau se não for sucesso
-	{ok, Data, HttpServer0} = agilitycache_http_server:get_body(HttpServer),
+send_post(_Event, _From,
+          #state{http_client=HttpClient,
+                 http_server=HttpServer,
+                 restant=Length} = State) ->
+	{ok, Data, HttpServer0} =
+		agilitycache_http_server:get_body(HttpServer),
 	DataSize = iolist_size(Data),
 	Restant = Length - DataSize,
 	case Restant of
 		0 ->
-			case agilitycache_http_client:send_data(Data, HttpClient) of
-				{ok, HttpClient0} ->
-					start_receive_reply(State#state{http_client=HttpClient0, http_server=HttpServer0});
-				{error, closed, HttpClient0} ->
-					%% @todo Eu devia alertar sobre isso, não?
-					start_stop(normal, State#state{http_client=HttpClient0, http_server=HttpServer0});
-				{error, Reason, HttpClient0} ->
-					start_stop({error, Reason}, State#state{http_client=HttpClient0, http_server=HttpServer0})
-			end;
+			{ok, HttpClient0} =
+				agilitycache_http_client:send_data(
+				    Data, HttpClient),
+			{reply, continue, start_receive_reply,
+			 State#state{http_client=HttpClient0,
+			             http_server=HttpServer0}};
 		_ when Restant > 0 ->
-			case agilitycache_http_client:send_data(Data, HttpClient) of
-				{ok, HttpClient0} ->
-					send_post(Restant, State#state{http_client=HttpClient0, http_server=HttpServer0});
-				{error, closed, HttpClient0} ->
-					%% @todo Eu devia alertar sobre isso, não?
-					start_stop(normal, State#state{http_client=HttpClient0, http_server=HttpServer0});
-				{error, Reason, HttpClient0} ->
-					start_stop({error, Reason}, State#state{http_client=HttpClient0, http_server=HttpServer0})
-			end;
-		_ ->
-			start_stop({error, <<"POST with incomplete data">>}, State)
+			{ok, HttpClient0} =
+				agilitycache_http_client:send_data(
+				    Data, HttpClient),
+			{reply, continue, send_post,
+			 State#state{http_client=HttpClient0,
+			             http_server=HttpServer0,
+			             restant=Restant}}
 	end.
-
--spec start_receive_reply(#state{}) -> no_return().
-start_receive_reply(State = #state{http_client = HttpClient}) ->
-	case agilitycache_http_client:start_receive_reply(HttpClient) of
-		{ok, HttpClient0} ->
-			start_send_reply(State#state{http_client=HttpClient0});
-		Error ->
-			start_stop(Error, State)
-	end.
-
--spec start_send_reply(#state{}) -> no_return().
-start_send_reply(State = #state{http_server=HttpServer, http_client=HttpClient}) ->
-	{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
+start_receive_reply(_Event, _From,
+                    #state{http_client = HttpClient} = State) ->
+	{ok, HttpClient0} =
+		agilitycache_http_client:start_receive_reply(
+		    HttpClient),
+	{reply, continue, start_send_reply,
+	 State#state{http_client=HttpClient0}}.
+start_send_reply(_Event, _From,
+                 #state{http_server=HttpServer,
+                        http_client=HttpClient} = State) ->
+	{HttpRep, HttpClient0} =
+		agilitycache_http_client:get_http_rep(HttpClient),
 	{Status, Rep2} = agilitycache_http_rep:status(HttpRep),
 	{Headers, Rep3} = agilitycache_http_rep:headers(Rep2),
 	{Length, Rep4} = agilitycache_http_rep:content_length(Rep3),
-	{Req, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-	case agilitycache_http_req:start_reply(HttpServer0, Status, Headers, Length, Req) of
-		{ok, Req2, HttpServer1} ->
-			HttpClient1 = agilitycache_http_client:set_http_rep(Rep4, HttpClient0),
-			HttpServer2 = agilitycache_http_server:set_http_req(Req2, HttpServer1),
-			case Status of
-				101 ->
-					do_basic_loop(State#state{http_server=HttpServer2, http_client=HttpClient1});
-				_ ->
-					Remaining = case Length of
-						            undefined -> undefined;
-						            _ when is_integer(Length) -> Length
-					            end,
-					send_reply(Remaining, State#state{http_server=HttpServer2, http_client=HttpClient1})
-			end;
-		{error, Reason, HttpServer1} ->
-			start_stop({error, Reason}, State#state{http_server=HttpServer1})
-	end.
-
--spec send_reply(_,#state{}) -> no_return().
-send_reply(Remaining, State = #state{http_server=HttpServer, http_client=HttpClient}) ->
-	%% Bem... oo servidor pode fechar, e isso não nos afeta muito, então
-	%% gerencia aqui se fechar/timeout.
-	case agilitycache_http_client:get_body(HttpClient) of
-		{ok, Data, HttpClient0} ->
-			Size = iolist_size(Data),
-			{Ended, NewRemaining} = case {Remaining, Size} of
-				                        {_, 0} ->
-					                        {true, Remaining};
-				                        {undefined, _} ->
-					                        {false, Remaining};
-				                        _ when is_integer(Remaining) ->
-					                        if
-						                        Remaining - Size > 0 ->
-							                        {false, Remaining - Size};
-						                        true ->
-							                        %% @todo: fazer um strip quando der negativo
-							                        {true, Remaining - Size}
-					                        end
-			                        end,
-			%%lager:debug("Ended: ~p, Remaining ~p, Size ~p, NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
-			case Ended of
-				true ->
-					case agilitycache_http_server:send_data(Data, HttpServer) of
-						{ok, HttpServer0} ->
-							start_stop(normal, State#state{http_server=HttpServer0, http_client=HttpClient0}); %% É o fim...
-						{error, closed, HttpServer0} ->
-							%% @todo Eu devia alertar sobre isso, não?
-							start_stop(normal, State#state{http_server=HttpServer0, http_client=HttpClient0});
-						{error, Reason, HttpServer0} ->
-							start_stop({error, Reason}, State#state{http_server=HttpServer0, http_client=HttpClient0})
-					end;
-				false ->
-					case agilitycache_http_server:send_data(Data, HttpServer) of
-						{ok, HttpServer0} ->
-							send_reply(NewRemaining, State#state{http_server=HttpServer0, http_client=HttpClient0});
-						{error, closed, HttpServer0} ->
-							%% @todo Eu devia alertar sobre isso, não?
-							start_stop(normal, State#state{http_server=HttpServer0, http_client=HttpClient0});
-						{error, Reason, HttpServer0} ->
-							start_stop({error, Reason}, State#state{http_server=HttpServer0, http_client=HttpClient0})
-					end
-			end;
-		{error, closed, HttpClient0} ->
-			start_stop(normal, State#state{http_client=HttpClient0});
-		{error, timeout, HttpClient0} ->
-			%%start_stop({error, <<"Remote Server timeout">>}, State#state{http_client=HttpClient0}) %% Não quero reportar sempre que o servidor falhar conosco...
-			start_stop(normal, State#state{http_client=HttpClient0})
-	end.
-
--spec start_stop(normal | {error,_}, #state{}) -> 'ok'.
-start_stop(normal, State = #state{keepalive=disabled, start_time=StartTime}) ->
-	EndTime = os:timestamp(),
-	folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
-	lager:debug("Normal, keepalive disabled"),
-	do_stop(State);
-start_stop(normal, State = #state{http_server=HttpServer, http_client=HttpClient, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-                                  listener=ListenerPid, keepalive=KeepAliveType, keepalive_default_timeout=KeepAliveDefaultTimeout,
-                                  start_time=StartTime}) ->
-	{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-	{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-	case {KeepAliveType, HttpReq#http_req.connection, HttpRep#http_rep.connection} of
-		{both, keepalive, keepalive} ->
-			lager:debug("Keepalive both stop"),
-			ReqKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
-			RepKeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpRep#http_rep.headers, KeepAliveDefaultTimeout)*1000,
-			KeepAliveTimeout = min(ReqKeepAliveTimeout, RepKeepAliveTimeout),
-			do_stop_server(keepalive, State),
-			do_stop_client(keepalive, State),
-			EndTime = os:timestamp(),
-			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
-			start_handle_both_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer0, http_client=HttpClient0,
-			                                                             timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
-			                                                             listener=ListenerPid, keepalive=true,
-			                                                             keepalive_default_timeout=KeepAliveDefaultTimeout,
-			                                                             start_time=os:timestamp()});
-		{_, keepalive, close} ->
-			lager:debug("Keepalive HttpServer stop"),
-			do_stop_server(keepalive, State),
-			do_stop_client(close, State),
-			HttpServer2 = agilitycache_http_server:set_http_req(#http_req{}, HttpServer0), %% Vazio
-			KeepAliveTimeout = agilitycache_http_protocol_parser:keepalive(HttpReq#http_req.headers, KeepAliveDefaultTimeout)*1000,
-			EndTime = os:timestamp(),
-			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
-			start_handle_req_keepalive_request(KeepAliveTimeout, #state{http_server=HttpServer2, timeout=Timeout, max_empty_lines=MaxEmptyLines,
-			                                                            transport=Transport, listener=ListenerPid, keepalive=true,
-			                                                            keepalive_default_timeout=KeepAliveDefaultTimeout,
-			                                                            start_time=os:timestamp()});
+	{Req, HttpServer0} =
+		agilitycache_http_server:get_http_req(HttpServer),
+	{ok, Req2, HttpServer1} =
+		agilitycache_http_req:start_reply(HttpServer0,
+		                                  Status, Headers,
+		                                  Length, Req),
+	HttpClient1 = agilitycache_http_client:set_http_rep(
+	                  Rep4, HttpClient0),
+	HttpServer2 = agilitycache_http_server:set_http_req(
+	                  Req2, HttpServer1),
+	case Status of
+		101 ->
+			{reply, continue, do_basic_loop,
+			 State#state{http_server=HttpServer2,
+			             http_client=HttpClient1}};
 		_ ->
-			EndTime = os:timestamp(),
-			folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
-			lager:debug("Normal stop"),
-			do_stop(State)
-	end;
-start_stop(_Reason, State = #state{start_time=StartTime}) ->
-	%%lager:debug("Fechando ~p, Reason: ~p, State: ~p~n", [self(), Reason, State]),
-	EndTime = os:timestamp(),
-	folsom_metrics:notify({total_proxy_time, timer:now_diff(EndTime, StartTime)}),
-	do_stop(State).
-
--spec do_stop(#state{}) -> 'ok'.
-do_stop(State) ->
-	do_stop_client(close, State),
-	do_stop_server(close, State),
-	ok.
--spec do_stop_server(close | keepalive, #state{}) -> 'ok'.
-do_stop_server(_Type, _State = #state{http_server=undefined}) ->
-	ok;
-do_stop_server(Type, _State = #state{http_server=HttpServer}) ->
-	%%unexpected(start_stop, State),
-	agilitycache_http_server:stop(Type, HttpServer),
-	ok.
--spec do_stop_client(close | keepalive, #state{}) -> 'ok'.
-do_stop_client(_Type, _State = #state{http_client=undefined}) ->
-	ok;
-do_stop_client(Type, _State = #state{http_client=HttpClient}) ->
-	agilitycache_http_client:stop(Type, HttpClient),
-	ok.
-
-do_basic_loop(State = #state{http_server=HttpServer, http_client=HttpClient, transport=Transport}) ->
-	ServerSocket = agilitycache_http_server:get_socket(HttpServer),
-	ClientSocket = agilitycache_http_client:get_socket(HttpClient),
-	Transport:setopts(ServerSocket, [{packet, 0}, {active, once}]),
-	Transport:setopts(ClientSocket, [{packet, 0}, {active, once}]),
+			{reply, continue, send_reply,
+			 State#state{http_server=HttpServer2,
+			             http_client=HttpClient1,
+			             restant=Length}}
+	end.
+do_basic_loop(_Event, _From,
+              #state{http_server=HttpServer,
+                     http_client=HttpClient,
+                     transport=Transport} = State) ->
+	ServerSocket =
+		agilitycache_http_server:get_socket(HttpServer),
+	ClientSocket =
+		agilitycache_http_client:get_socket(HttpClient),
+	Transport:setopts(ServerSocket,
+	                  [{packet, 0}, {active, once}]),
+	Transport:setopts(ClientSocket,
+	                  [{packet, 0}, {active, once}]),
 
 	receive
 		{_, ServerSocket, Data} ->
 			Transport:send(ClientSocket, Data),
-			do_basic_loop(State);
+			{reply, continue, do_basic_loop, State};
 		{_, ClientSocket, Data} ->
 			Transport:send(ServerSocket, Data),
-			do_basic_loop(State);
+			{reply, continue, do_basic_loop, State};
 		{tcp_closed, ClientSocket} ->
-			{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-			HttpClient1 = agilitycache_http_client:set_http_rep(HttpRep#http_rep{connection=close}, HttpClient0),
-			start_stop(normal, State#state{http_client=HttpClient1});
+			{HttpRep, HttpClient0} =
+				agilitycache_http_client:get_http_rep(
+				    HttpClient),
+			HttpClient1 =
+				agilitycache_http_client:set_http_rep(
+				    HttpRep#http_rep{
+				        connection=close},
+				    HttpClient0),
+			lager:debug("stopping"),
+			{stop, normal, ok, State#state{
+			                       http_client=HttpClient1}};
 		{tcp_closed, ServerSocket} ->
-			{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-			HttpServer1 = agilitycache_http_server:set_http_req(HttpReq#http_req{connection=close}, HttpServer0),
-			start_stop(normal, State#state{http_server=HttpServer1});
-		_ ->
-			{HttpRep, HttpClient0} = agilitycache_http_client:get_http_rep(HttpClient),
-			HttpClient1 = agilitycache_http_client:set_http_rep(HttpRep#http_rep{connection=close}, HttpClient0),
-			{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
-			HttpServer1 = agilitycache_http_server:set_http_req(HttpReq#http_req{connection=close}, HttpServer0),
-			start_stop(normal, State#state{http_server=HttpServer1, http_client=HttpClient1})
+			{HttpReq, HttpServer0} =
+				agilitycache_http_server:get_http_req(
+				    HttpServer),
+			HttpServer1 =
+				agilitycache_http_server:set_http_req(
+				    HttpReq#http_req{
+				        connection=close},
+				    HttpServer0),
+			lager:debug("stopping"),
+			{stop, normal, ok, State#state{
+			                       http_server=HttpServer1}}
 	end.
+send_reply(_Event, _From,
+           #state{http_server=HttpServer,
+                  http_client=HttpClient,
+                  restant=Remaining} = State) ->
+	{ok, Data, HttpClient0} =
+		agilitycache_http_client:get_body(HttpClient),
+
+	Size = iolist_size(Data),
+	{Ended, NewRemaining} =
+		case {Remaining, Size} of
+			{_, 0} ->
+				{true, Remaining};
+			{undefined, _} ->
+				{false, Remaining};
+			_ when is_integer(Remaining) ->
+				if
+					Remaining - Size > 0 ->
+						{false,
+						 Remaining - Size};
+					true ->
+						%% @todo: fazer um strip quando der negativo
+						{true,
+						 Remaining - Size}
+				end
+		end,
+	%%lager:debug("Ended: ~p, Remaining ~p, Size ~p,
+	%% NewRemaining ~p", [Ended, Remaining, Size, NewRemaining]),
+	{ok, HttpServer0} =
+		agilitycache_http_server:send_data(Data, HttpServer),
+	case Ended of
+		true ->
+			lager:debug("stopping"),
+			{reply, continue, begin_stop, State#state{
+			                                  http_server=HttpServer0,
+			                                  http_client=HttpClient0}};
+		false ->
+			{reply, continue, send_reply,
+			 State#state{http_server=HttpServer0,
+			             http_client=HttpClient0,
+			             restant=NewRemaining}}
+	end.
+begin_stop(_Event, _From, #state{keepalive=disabled} = State) ->
+	{stop, normal, ok, State};
+begin_stop(_Event, _From, #state{keepalive=KeepAliveType,
+                                 http_server=HttpServer,
+                                 http_client=HttpClient,
+                                 keepalive_default_timeout=
+	                                 KeepAliveDefaultTimeout,
+                                 start_time=StartTime} = State) ->
+	{HttpReq, HttpServer0} =
+		agilitycache_http_server:get_http_req(HttpServer),
+	{HttpRep, HttpClient0} =
+		agilitycache_http_client:get_http_rep(HttpClient),
+
+	case {KeepAliveType, HttpReq#http_req.connection,
+	      HttpRep#http_rep.connection} of
+		{both, keepalive, keepalive} ->
+			ReqKeepAliveTimeout =
+				agilitycache_http_protocol_parser:keepalive(
+				    HttpReq#http_req.headers,
+				    KeepAliveDefaultTimeout)*1000,
+			RepKeepAliveTimeout =
+				agilitycache_http_protocol_parser:keepalive(
+				    HttpRep#http_rep.headers,
+				    KeepAliveDefaultTimeout)*1000,
+			KeepAliveTimeout = min(ReqKeepAliveTimeout,
+			                       RepKeepAliveTimeout),
+			{ok, HttpServer1} =
+				agilitycache_http_server:stop(
+				    keepalive, HttpServer0),
+			{ok, HttpClient1} =
+				agilitycache_http_client:stop(
+				    keepalive, HttpClient0),
+
+			EndTime = os:timestamp(),
+			folsom_metrics:notify(
+			    {total_proxy_time,
+			     timer:now_diff(EndTime, StartTime)}),
+			{reply, continue,
+			 start_handle_both_keepalive_request,
+			 State#state{http_server=HttpServer1,
+			             http_client=HttpClient1,
+			             keepalive_timeout =
+				             KeepAliveTimeout}};
+		{_, keepalive, close} ->
+			{ok, HttpServer1} =
+				agilitycache_http_server:stop(
+				    keepalive, HttpServer0),
+			{ok, HttpClient1} =
+				agilitycache_http_client:stop(
+				    close, HttpClient0),
+			HttpServer2 =
+				agilitycache_http_server:set_http_req(
+				    #http_req{}, HttpServer1), %% Vazio
+			KeepAliveTimeout =
+				agilitycache_http_protocol_parser:keepalive(
+				    HttpReq#http_req.headers,
+				    KeepAliveDefaultTimeout)*1000,
+			EndTime = os:timestamp(),
+			folsom_metrics:notify(
+			    {total_proxy_time,
+			     timer:now_diff(EndTime, StartTime)}),
+			{reply, continue,
+			 start_handle_req_keepalive_request,
+			 #state{http_server=HttpServer2,
+			        http_client=HttpClient1,
+			        keepalive_timeout =
+				        KeepAliveTimeout}};
+		_ ->
+			{stop, normal, ok, State}
+	end.
+
+start_handle_req_keepalive_request(_Event, _From, #state{
+                                               http_server=HttpServer,
+                                               keepalive_timeout =
+	                                               KeepAliveTimeout} =
+	                                   State) ->
+	{ok, HttpServer0} =
+		agilitycache_http_server:read_keepalive_request(
+		    KeepAliveTimeout, HttpServer),
+	{reply, continue, read_reply,
+	 State#state{http_server=HttpServer0}}.
+
+start_handle_both_keepalive_request(_Event, _From,
+                                    #state{http_server=HttpServer,
+                                           keepalive_timeout=KeepAliveTimeout} = State) ->
+	case agilitycache_http_server:read_keepalive_request(
+	         KeepAliveTimeout, HttpServer) of
+		{ok, HttpServer0} ->
+			{reply, continue, read_both_keepalive_reply,
+			 State#state{http_server=HttpServer0}};
+		{error, closed, HttpServer0} ->
+			{reply, continue, read_reply,
+			 State#state{http_server=HttpServer0}}
+	end.
+
+read_both_keepalive_reply(_Event, _From,
+                          #state{http_server=HttpServer,
+                                 http_client=HttpClient} = State) ->
+	{HttpReq, HttpServer0} = agilitycache_http_server:get_http_req(HttpServer),
+	{ok, HttpReq0, HttpClient0} = agilitycache_http_client:start_keepalive_request(HttpReq, HttpClient),
+	HttpServer1 = agilitycache_http_server:set_http_req(HttpReq0, HttpServer0),
+	Method =
+		agilitycache_http_protocol_parser:method_to_binary(
+		    HttpReq0#http_req.method),
+	case Method of
+		<<"POST">> ->
+			{reply, continue, start_send_post,
+			 State#state{http_server=HttpServer1,
+			             http_client=HttpClient0}};
+		_ ->
+			{reply, continue, start_receive_reply,
+			 State#state{http_server=HttpServer1,
+			             http_client=HttpClient0}}
+	end.
+
+handle_event(_Event, StateName, State) ->
+	{next_state, StateName, State}.
+
+handle_sync_event(_Event, _From, StateName, State) ->
+	Reply = ok,
+	{reply, Reply, StateName, State}.
+
+handle_info(_Info, StateName, State) ->
+	{next_state, StateName, State}.
+
+terminate(_Reason, _StateName, #state{start_time=StartTime,
+                                      http_server=HttpServer,
+                                      http_client=HttpClient}) ->
+	EndTime = os:timestamp(),
+	folsom_metrics:notify({total_proxy_time,
+	                       timer:now_diff(EndTime, StartTime)}),
+	agilitycache_http_server:stop(close, HttpServer),
+	agilitycache_http_client:stop(close, HttpClient),
+	ok.
+
+code_change(_OldVsn, StateName, State, _Extra) ->
+	{ok, StateName, State}.

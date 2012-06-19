@@ -55,13 +55,12 @@ headers(#http_rep{ headers = Headers} = Req) ->
 
 content_length(#http_rep{content_length=undefined} = Req) ->
 	{Length, Req1} = case header('Content-Length', Req) of
-		                 {L1, Req_1} when is_binary(L1) ->
-                                                % Talvez iolist_to_binary seja desnecessário, mas é bom para manter certinho o input com iolist/iodata
-			                 {list_to_integer(
-			                      binary_to_list(
-			                          iolist_to_binary(L1))), Req_1};
-		                 {_, Req_2} ->
-			                 {invalid, Req_2}
+		                 {undefined, Req_2} ->
+			                 {invalid, Req_2};
+		                 {L1, Req_1}->
+			                 %% Talvez iolist_to_binary seja desnecessário,
+			                 %% mas é bom para manter certinho o input com iolist/iodata
+			                 {cowboy_http:digits(iolist_to_binary(L1)), Req_1}
 	                 end,
 	case Length of
 		invalid ->
@@ -110,5 +109,3 @@ response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
 
 response_head(Rep) ->
     response_head({1, 1}, Rep#http_rep.status, Rep#http_rep.headers, []).
-
-

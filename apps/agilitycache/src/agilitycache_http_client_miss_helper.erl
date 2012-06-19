@@ -106,7 +106,7 @@ handle_cast({open, FileId}, State) ->
   try
     {ok, Path} = agilitycache_cache_dir:get_best_filepath(FileId),
     filelib:ensure_dir(Path),
-    {ok, FileHandle} = file:open(Path, [raw, write, delayed_write, binary]),
+    {ok, FileHandle} = file:open(<<Path/binary, ".tmp" >>, [raw, write, delayed_write, binary]),
     {ok, Path, FileHandle}
   of
     {ok, Path0, FileHandle0} ->
@@ -126,8 +126,9 @@ handle_cast({write, Data}, State = #state{file_handle=FileHandle}) ->
     {error, _} = Z ->
       {stop, Z, State}
   end;
-handle_cast(close, State) ->
+handle_cast(close, State = #state{file_path=FileName}) ->
   close_file(State),
+  file:rename(<<FileName/binary, ".tmp">>, FileName),
   {stop, normal, State#state{file_handle=undefined}};
 
 handle_cast(_Msg, State) ->
@@ -159,8 +160,9 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec terminate(_,#state{}) -> 'ok'.
-terminate(_Reason, State) ->
+terminate(Reason, State) ->
   close_file(State),
+  lager:debug("Reason: ~p", [Reason]),
   ok.
 
 %%--------------------------------------------------------------------
@@ -187,4 +189,3 @@ close_file(#state{file_handle=FileHandle}) ->
   file:close(FileHandle),
   file:close(FileHandle),
   ok.
-

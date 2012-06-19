@@ -145,7 +145,6 @@ get_body(State=#http_client_state{
              client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>})->
 	case Transport:recv(Socket, 0, T) of
 		{ok, Data} ->
-
 			{ok, Data, State};
 		{error, timeout} ->
 			{error, timeout, State};
@@ -217,6 +216,8 @@ stop(close, State) ->
 %%
 
 -spec close(http_client_state()) -> {ok, http_client_state()}.
+close(undefined) ->
+        {ok, #http_client_state{}};
 close(State = #http_client_state{transport=Transport, client_socket=Socket}) ->
 	case Socket of
 		undefined ->
@@ -347,7 +348,7 @@ check_cacheability(State = #http_client_state{http_rep=HttpRep, cache_plugin = P
 			%% I'll set age after... put age = MaxAge here to simplify
 			CachedFileInfo = #cached_file_info{ http_rep = HttpRep, max_age = MaxAge, age = MaxAge },
 			agilitycache_database:write_info(FileId, CachedFileInfo),
-			{ok, Helper} = agilitycache_http_client_miss_helper:start(),
+			{ok, Helper} = agilitycache_http_client_miss_helper:start_link(),
 			agilitycache_http_client_miss_helper:open(FileId, Helper),
 			{ok, State#http_client_state{cache_http_req = undefined, cache_info = CachedFileInfo, cache_file_helper = Helper}};
 		false ->
@@ -481,4 +482,3 @@ test_in_charge_plugins([Plugin | T], HttpReq, Default) ->
 		false ->
 			test_in_charge_plugins(T, HttpReq, Default)
 	end.
-
