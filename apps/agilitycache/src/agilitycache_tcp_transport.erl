@@ -124,7 +124,7 @@ connect(RemoteIp, RemotePort, Opts, Timeout) ->
 	%% Hack do timeout: tentar conectar com um timeout para cada ip
 	%% não sei se compensa... mas é melhor, pois testa todos os ips...
 	%% @todo: Criar um cache DNS, e só inserir as entradas que conectarem com sucesso
-	case agilitycache_app:instrument_function(resolve_time,
+	case folsom_metrics:histogram_timed_update(resolve_time,
 	                                          inet_tcp,
 	                                          getaddrs,
 	                                          [RemoteIp, Timeout]) of

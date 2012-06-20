@@ -6,7 +6,6 @@
 -export([start/0, start/1, start/2, stop/1]).
 
 -export([instrumentation/0, instrumentation/1]).
--export([instrument_function/2, instrument_function/3, instrument_function/4]).
 
 %% ===================================================================
 %% Application callbacks
@@ -51,35 +50,3 @@ instrumentation(Metric) ->
 		Error ->
 			Error
 	end.
-
--spec instrument_function(_,fun(() -> any())) -> any().
-instrument_function(Hist, F) ->
-	Before = os:timestamp(),
-	Val = F(),
-	After = os:timestamp(),
-	folsom_metrics:notify({Hist, timer:now_diff(After, Before)}),
-	Val.
-
--spec instrument_function(_,fun() | {atom() | tuple(),atom()},[any()]) -> any().
-instrument_function(Hist, F, A) ->
-	Before = os:timestamp(),
-	Val = apply(F, A),
-	After = os:timestamp(),
-    	folsom_metrics:notify({Hist, timer:now_diff(After, Before)}),
-	Val.
-
--spec instrument_function(_,atom() | tuple(),atom(),[any()]) -> any().
-instrument_function(Hist, M, F, A) ->
-	Before = os:timestamp(),
-	Val = apply(M, F, A),
-	After = os:timestamp(),
-    	folsom_metrics:notify({Hist, timer:now_diff(After, Before)}),
-	Val.
-
-
-%%
-%% Tests
-%%
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.

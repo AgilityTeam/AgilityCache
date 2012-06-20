@@ -72,7 +72,7 @@ start_connect(HttpReq =
 	             {delay_send, true}
 	            ],
 	lager:debug("Host: ~p Port: ~p", [Host, Port]),
-	case agilitycache_app:instrument_function(connection_time,
+	case folsom_metrics:histogram_timed_update(connection_time,
 	                                          Transport,
 	                                          connect,
 	                                          [binary_to_list(Host), Port, TransOpts, Timeout]) of
