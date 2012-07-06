@@ -164,14 +164,9 @@ start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connecti
 	            end,
 
 	Head = agilitycache_http_rep:response_head(Version, Code, Headers, MyHeaders),
-	%% @todo arrumar isso pra fazer um match mais bonitinho
-	%% ou passar isso pra frente
-	case agilitycache_http_server:send_data(Head, HttpServer) of
-		{ok, HttpServer0} ->
-			{ok, Req, HttpServer0};
-		{error, _, _} = Error ->
-			Error
-	end.
+
+	ok = agilitycache_http_server:send_data(HttpServer, Head),
+	{ok, Req, HttpServer}.
 
 -spec request_head(#http_req{}) -> iodata().
 

@@ -10,7 +10,6 @@ start_link(ListenerPid, Socket, Transport, Opts) ->
 
 start_sup(ListenerPid, Socket, Transport, Opts)	->
 	{ok, SupPid} = supervisor:start_link(?MODULE, []),
-	
 	{ok, SessionPid} = supervisor:start_child(SupPid,
 		{agilitycache_http_session, 
 			{agilitycache_http_session, start_link, [SupPid, Socket, Transport, Opts]},
