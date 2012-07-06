@@ -30,33 +30,12 @@ get_path_info(Path) when is_list(Path) ->
   get_path_info(list_to_binary(Path));
 get_path_info(Path) when is_binary(Path)->
   FileSystems = disksup:get_disk_data(),
-  case lists:keyfind(binary_to_list(Path), 1, FileSystems) of
-    false ->
-      get_path_info(lists:reverse(filename:split(Path)), FileSystems);
-    {FileSystem, TotalSize, Used} ->
-      {FileSystem, TotalSize, Used}
+  NormalizedPath = filename:split(filename:absname(Path)),  
+  get_path_info(NormalizedPath, FileSystems).
+
+get_path_info(Path, [{FileSystem, _, _} = FSInfo | Tail]) ->
+  NormalizedFSPath = filename:split(filename:absname(list_to_binary(FileSystem))),  
+  case lists:prefix(NormalizedFSPath, Path) of
+    true -> FSInfo;
+    false -> get_path_info(Path, Tail)
   end.
-
--spec get_path_info(list(), list({string(), integer(), integer()})) -> {binary() | list(), integer(), integer()} | {error, any()}.
-
-get_path_info([], _) ->
-  {error, notfound};
-get_path_info([_|[]], _) ->
-  {error, notfound};
-get_path_info([_|Path], FileSystems) ->
-  case lists:keyfind(binary_to_list(filename:join(lists:reverse(Path))), 1, FileSystems) of
-    false ->
-      get_path_info(Path, FileSystems);
-    {FileSystem, TotalSize, Used} ->
-      {FileSystem, TotalSize, Used}
-  end.
-
-%-ifdef(TEST).
-%-include_lib("eunit/include/eunit.hrl").
-%get_bets_path_test_() ->
-%  Tests = [
-%    {[[{path, <<"/home/agilitycache/var/database">>}]], <<"/home/agilitycache/var/database">>}
-%  ],
-%  [{H, fun() -> R = get_best_path(H) end} || {H, R} <- Tests].
-%-endif.
-
