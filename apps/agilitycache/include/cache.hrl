@@ -8,10 +8,12 @@
 
 
 -type cache_file_id() :: <<_:128>>.
--record(agilitycache_transit_file, {
+-record(agilitycache_transit_file_reading, {
     id :: cache_file_id(),
-    status = undefined :: downloading | reading | undefined,
-    concurrent_readers = 0 :: non_neg_integer()
+    process :: pid()
   }).
-
+-record(agilitycache_transit_file_downloading, {
+    id :: cache_file_id(),
+    process :: pid()
+  }).
 

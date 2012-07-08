@@ -71,8 +71,8 @@ init({ServerSocket, Transport, Opts}) ->
 	                                            87380),
 	Transport:setopts(ServerSocket, [{send_timeout, Timeout},
 	                                 {send_timeout_close, true},
-	                                 {buffer, BufferSize},
-	                                 {delay_send, true}]),
+	                                 {buffer, BufferSize}
+	                                 ]),
 
 	{ok, HttpServer} = agilitycache_http_server:start_link(Transport, ServerSocket, Timeout, MaxEmptyLines),
 	Transport:controlling_process(ServerSocket, HttpServer),
