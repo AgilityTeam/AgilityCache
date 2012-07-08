@@ -8,15 +8,14 @@
 	terminate/2, 
 	code_change/3]).
 
--export([start_link/5]).
+-export([start_link/4]).
 
--export([read_request/1, read_keepalive_request/2, get_body/1, send_data/2, get_http_req/1, set_http_req/2, stop/1]).
+-export([read_request/1, read_keepalive_request/2, get_body/1, send_data/2, get_http_req/1, set_http_req/2, end_request/1, stop/1]).
 -export([get_socket/2, set_socket/2]).
 
 -include("http.hrl").
 
 -record(state, {
-			supervisor :: pid(),
             http_req :: #http_req{},
             server_socket :: inet:socket(),
             transport :: module(),
@@ -26,13 +25,11 @@
             server_buffer = <<>> :: binary()           
            }).
 
-start_link(SupPid, Transport, ServerSocket, Timeout, MaxEmptyLines) ->
-	lager:debug("uaii"),
-	gen_server:start_link(?MODULE, [SupPid, Transport, ServerSocket, Timeout, MaxEmptyLines], []).
+start_link(Transport, ServerSocket, Timeout, MaxEmptyLines) ->
+	gen_server:start_link(?MODULE, [Transport, ServerSocket, Timeout, MaxEmptyLines], []).
 
-init([SupPid, Transport, ServerSocket, Timeout, MaxEmptyLines]) ->
-	lager:debug("olha só onde estamos"),
-	{ok, #state{supervisor=SupPid, timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
+init([Transport, ServerSocket, Timeout, MaxEmptyLines]) ->
+	{ok, #state{timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport,
 	 server_socket=ServerSocket}}.
 
 %% Public API
@@ -55,6 +52,9 @@ get_http_req(Pid) ->
 
 set_http_req(Pid, Req) ->
 	gen_server:call(Pid, {set_http_req, Req}, infinity).
+
+end_request(Pid) ->
+	gen_server:call(Pid, end_request, infinity).
 
 stop(Pid) ->
 	gen_server:call(Pid, stop, infinity).
@@ -80,6 +80,8 @@ handle_call(get_body, _From, State) ->
 	handle_get_body(State);	
 handle_call({send_data, Data}, _From, State) ->
 	handle_send_data(Data, State);
+handle_call(end_request, _From, State) ->
+	handle_end_request(State);	
 handle_call(stop, _From, State) ->
 	handle_stop(State);	
 handle_call({get_socket, OtherPid}, _From, State) ->
@@ -97,6 +99,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, State) ->
+	lager:debug("terminate Reason: ~p", [Reason]),
 	close_socket(State),
     ok.
 
@@ -137,16 +140,16 @@ handle_send_data(Data, State = #state { transport = Transport, server_socket = S
 	ok = Transport:send(Socket, Data),
 	{reply, ok, State}.
 
+handle_end_request(State) ->
+	{reply, ok, State#state{http_req = #http_req{}, server_buffer = <<>>, req_empty_lines = 0}}.
+
 handle_stop(State) ->
 	{stop, normal, ok, State#state{server_socket=undefined}}.
 
+close_socket(#state{server_socket=undefined}) ->
+	ok;
 close_socket(#state{transport=Transport, server_socket=Socket}) ->
-	case Socket of
-		undefined ->
-			ok;
-		_ ->
-			Transport:close(Socket)			
-	end.
+	Transport:close(Socket).	
 
 wait_request(State=#state{timeout=T}) ->
 	wait_request(T, State).
@@ -207,22 +210,17 @@ parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPa
 			                                              headers=[{'Host', << Host/binary, ":", BinaryPort/binary>>}]}}
 	         end,
 	start_parse_request_header(State2);
-parse_request({http_request, _Method, _URI, _Version}, State) ->
-	{stop, {http_error, 501}, State};
+
 parse_request({http_error, <<"\r\n">>},
               State=#state{req_empty_lines=N, max_empty_lines=N}) ->
-	{stop, {http_error, 400}, State};
+	{stop, {http_error, 400}, {error, {http_error, 400}}, State};
 parse_request({http_error, <<"\r\n">>}, State=#state{req_empty_lines=N}) ->
 	start_parse_request(State#state{req_empty_lines=N + 1});
 parse_request({http_error, <<"\n">>},
               State=#state{req_empty_lines=N, max_empty_lines=N}) ->
-	{stop, {http_error, 400}, State};
+	{stop, {http_error, 400}, {error, {http_error, 400}}, State};
 parse_request({http_error, <<"\n">>}, State=#state{req_empty_lines=N}) ->
-	start_parse_request(State#state{req_empty_lines=N + 1});
-parse_request({http_error, _Any}, State) ->
-	{stop, {http_error, 400}, State};
-parse_request(_Shit, State) ->
-	{stop, {http_error, 500}, State}.
+	start_parse_request(State#state{req_empty_lines=N + 1}).
 
 start_parse_request_header(State=#state{server_buffer=Buffer}) ->
 	case erlang:decode_packet(httph_bin, Buffer, []) of
@@ -273,7 +271,7 @@ parse_request_header({http_header, _I, Field, _R, Value}, State = #state{http_re
 	start_parse_request_header(State#state{http_req=Req#http_req{headers=[{Field2, Value}|Req#http_req.headers]}});
 %% The Host header is required in HTTP/1.1.
 parse_request_header(http_eoh, State=#state{http_req=#http_req{version = {1, 1}, uri=#http_uri{domain=undefined}}}) ->
-	{stop, {http_error, 400}, State};
+	{stop, {http_error, 400}, {error, {http_error, 500}}, State};
 %% It is however optional in HTTP/1.0.
 %% @todo Devia ser um erro, host undefined o.O
 parse_request_header(http_eoh, State=#state{transport=Transport, http_req=Req=#http_req{version={1, 0}, uri=#http_uri{domain=undefined}}}) ->
@@ -284,5 +282,5 @@ parse_request_header(http_eoh, State) ->
 	%% Ok, terminar aqui, e esperar envio!
 	{reply, ok, State};
 parse_request_header({http_error, _Bin}, State) ->
-	{stop, {http_error, 500}, State}.
+	{stop, {http_error, 500}, {error, {http_error, 500}}, State}.
 

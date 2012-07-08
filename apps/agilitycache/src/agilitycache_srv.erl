@@ -79,7 +79,7 @@ init([]) ->
 	lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
 	{ok, _} = cowboy:start_listener(Ref, NbAcceptors,
 	                                agilitycache_tcp_transport, TransOpts,
-	                                agilitycache_http_session_sup, [{dispatch, Dispatch}]
+	                                agilitycache_http_session, [{dispatch, Dispatch}]
 	                               ),
 	{ok, #state{listener=Ref}}.
 

@@ -1,25 +1,34 @@
-%% Author: osmano807
-%% Created: Dec 27, 2011
-%% Description: TODO: Add description to agilitycache_http_client
 -module(agilitycache_http_client).
 
-%%
-%% Include files
-%%
+-behaviour(gen_server).
+-export([init/1, 
+	handle_call/3, 
+	handle_cast/2, 
+	handle_info/2, 
+	terminate/2, 
+	code_change/3]).
+
+-export([start_link/3]).
+
+-export([start_request/2, 
+	start_keepalive_request/2, 
+	start_receive_reply/1, 
+	get_http_rep/1, 
+	set_http_rep/2, 
+	get_body/1, 
+	send_data/2, 
+	end_reply/1, 
+	stop/1]).
+-export([get_socket/2, set_socket/2]).
+
 -include("cache.hrl"). %% superseeds http.hrl
 
-%%
-%% Exported Functions
-%%
--export([new/3, start_request/2, start_keepalive_request/2, start_receive_reply/1, get_http_rep/1, set_http_rep/2, get_body/1, send_data/2, stop/2]).
--export([get_socket/1]).
-
--record(http_client_state, {
-          http_rep :: #http_rep{} | undefined,
-          client_socket :: inet:socket() | undefined,
-          transport :: module() | undefined,
+-record(state, {
+          http_rep :: #http_rep{},
+          client_socket :: inet:socket(),
+          transport :: module(),
           rep_empty_lines = 0 :: integer(),
-          max_empty_lines :: non_neg_integer() | undefined,
+          max_empty_lines :: non_neg_integer(),
           timeout = 5000 :: timeout(),
           client_buffer = <<>> :: binary(),
           cache_plugin = agilitycache_cache_plugin_default :: module(),
@@ -32,142 +41,169 @@
           cache_http_req %% Only set and used when cache_status = miss
          }).
 
--opaque http_client_state() :: #http_client_state{}.
--export_type([http_client_state/0]).
+start_link(Transport, Timeout, MaxEmptyLines) ->
+	gen_server:start_link(?MODULE, [Transport, Timeout, MaxEmptyLines], []).
 
-%%
-%% API Functions
-%%
+init([Transport, Timeout, MaxEmptyLines]) ->
+	{ok, #state{timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport}}.
 
--spec new(module(), timeout(), non_neg_integer()) -> http_client_state().
-new(Transport, Timeout, MaxEmptyLines) ->
-	#http_client_state{timeout=Timeout, max_empty_lines=MaxEmptyLines, transport=Transport}.
+%% Public API
+%% ===============================================================
+start_request(Pid, HttpReq) ->
+	gen_server:call(Pid, {start_request, HttpReq}, infinity).
 
--spec get_http_rep(http_client_state()) -> {#http_rep{}, http_client_state()}.
-get_http_rep(#http_client_state{http_rep = HttpRep} = State) ->
-	{HttpRep, State}.
+start_keepalive_request(Pid, HttpReq) ->
+	gen_server:call(Pid, {start_keepalive_request, HttpReq}, infinity).
 
--spec set_http_rep(#http_rep{}, http_client_state()) -> http_client_state().
-set_http_rep(HttpRep, State) ->
-	State#http_client_state{http_rep = HttpRep}.
+start_receive_reply(Pid) ->
+	gen_server:call(Pid, start_receive_reply, infinity).
 
--spec get_socket(http_client_state()) -> inet:socket().
-get_socket(#http_client_state{client_socket = Socket}) ->
-	Socket.
+get_http_rep(Pid) ->
+	gen_server:call(Pid, get_http_rep, infinity).
 
--spec start_request(#http_req{}, http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
-start_request(HttpReq, State) ->
+set_http_rep(Pid, HttpRep) ->
+	gen_server:call(Pid, {set_http_rep, HttpRep}, infinity).
+
+get_body(Pid) ->
+	gen_server:call(Pid, get_body, infinity).
+
+send_data(Pid, Data) ->
+	gen_server:call(Pid, {send_data, Data}, infinity).
+
+end_reply(Pid) ->
+	gen_server:call(Pid, end_reply, infinity).
+
+stop(Pid) ->
+	gen_server:call(Pid, stop, infinity).
+
+get_socket(Pid, OuterPid) ->
+	gen_server:call(Pid, {get_socket, OuterPid}, infinity).
+
+set_socket(Pid, Socket) ->
+	gen_server:call(Pid, {set_socket, Socket}, infinity).
+
+%% ===============================================================
+handle_call({start_request, HttpReq}, _From, State) ->
+	handle_start_request(HttpReq, State);
+handle_call({start_keepalive_request, HttpReq}, _From, State) ->
+	handle_start_keepalive_request(HttpReq, State);
+handle_call(start_receive_reply, _From, State) ->
+	handle_start_receive_reply(State);
+handle_call(get_http_rep, _From, State) ->
+	handle_get_http_rep(State);
+handle_call({set_http_rep, HttpReq}, _From, State) ->
+	handle_set_http_rep(HttpReq, State);	
+handle_call(get_body, _From, State) ->
+	handle_get_body(State);
+handle_call({send_data, Data}, _From, State) ->
+	handle_send_data(Data, State);
+handle_call(end_reply, _From, State) ->
+	handle_end_reply(State);
+handle_call(stop, _From, State) ->
+	handle_stop(State);
+handle_call({get_socket, OtherPid}, _From, State) ->
+	handle_get_socket(OtherPid, State);
+handle_call({set_socket, Socket}, _From, State) ->
+	handle_set_socket(Socket, State);	
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(Reason, #state{cache_status=CacheStatus, cache_id=FileId} = State) ->
+	lager:debug("terminate Reason: ~p", [Reason]),
+	lager:debug("Removendo índice do db: ~p", [FileId]),
+	case CacheStatus of 
+		miss ->	mnesia:transaction(fun() -> mnesia:delete({agilitycache_transit_file, FileId}), ok end);
+		_ -> ok
+	end,
+	close_socket(State),
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.                        
+
+%% ==============================================
+
+handle_get_socket(OtherPid, #state{client_socket = Socket, transport = Transport} = State) ->
+	Transport:controlling_process(Socket, OtherPid),
+	{reply, Socket, State}.
+
+handle_set_socket(Socket, State) ->
+	{reply, ok, State#state{client_socket=Socket}}.
+
+handle_get_http_rep(#state{http_rep = HttpRep} = State) ->
+	{reply, HttpRep, State}.
+
+handle_set_http_rep(HttpRep, State) ->
+	{reply, ok, State#state{http_rep = HttpRep}}.
+
+handle_start_request(HttpReq, State) ->
 	check_plugins(HttpReq, State, fun start_connect/2).
 
--spec start_connect(#http_req{}, http_client_state()) -> {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
-start_connect(HttpReq =
-	              #http_req{ uri=_Uri=#http_uri{ domain = Host, port = Port}}, State=#http_client_state{transport = Transport, timeout = Timeout}) ->
-
-	BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
-	TransOpts = [
-	             %%{nodelay, true}%, %% We want to be informed even when packages are small
-	             {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
-	             {send_timeout_close, true}, %%... and therefore the connection should be closed
-	             {buffer, BufferSize},
-	             {delay_send, true}
-	            ],
-	lager:debug("Host: ~p Port: ~p", [Host, Port]),
-	case folsom_metrics:histogram_timed_update(connection_time,
-	                                          Transport,
-	                                          connect,
-	                                          [binary_to_list(Host), Port, TransOpts, Timeout]) of
-		{ok, Socket} ->
-			start_send_request(HttpReq, State#http_client_state{client_socket = Socket});
-		{error, Reason} ->
-			{error, Reason, State}
-	end.
-
--spec start_keepalive_request(HttpReq :: #http_req{}, State :: http_client_state()) ->
-		                             {ok, #http_req{}, http_client_state()} | {error, any(), http_client_state()}.
-start_keepalive_request(_HttpReq, State = #http_client_state{client_socket = undefined}) ->
-	{error, invalid_socket, State};
-start_keepalive_request(HttpReq, State) ->
+handle_start_keepalive_request(_HttpReq, State = #state{client_socket = undefined}) ->
+	{stop, invalid_socket, {error, invalid_socket}, State};
+handle_start_keepalive_request(HttpReq, State) ->
 	check_plugins(HttpReq, State, fun start_send_request/2).
 
--spec start_receive_reply(http_client_state()) -> {ok, http_client_state()} | {error, any(), http_client_state()}.
-start_receive_reply(State = #http_client_state{cache_status = hit, cache_info = CachedFileInfo,
+handle_start_receive_reply(State = #state{cache_status = hit, cache_info = CachedFileInfo,
                                                cache_id = FileId, cache_file_path=Path, cache_plugin = Plugin}) ->
 	lager:debug("Cache Hit"),
 	{ok, CachedFileInfo0} = agilitycache_database:read_remaining_info(FileId, CachedFileInfo),
 	{ok, FileHandle} = file:open(Path, [raw, read, binary]),
 	HttpRep = CachedFileInfo0#cached_file_info.http_rep,
 	lager:debug("HttpRep: ~p", [HttpRep]),
-	{ok, State#http_client_state{cache_info = CachedFileInfo0, http_rep=HttpRep#http_rep{
+	{reply, ok, State#state{cache_info = CachedFileInfo0, http_rep=HttpRep#http_rep{
 		  headers = [{<<"X-Agilitycache">>, agilitycache_utils:hexstring(FileId)},
 		             {<<"X-Cache">>, <<"Hit">>},
 		             {<<"X-Plugin">>, Plugin:name()} |
 		             HttpRep#http_rep.headers]}, cache_file_handle=FileHandle}};
-start_receive_reply(State) ->
+handle_start_receive_reply(State) ->
 	start_parse_reply(State).
 
--spec get_body(http_client_state()) -> {ok, iolist(), http_client_state()} | {error, any(), http_client_state()}.
 %% Cache Hit functions
-get_body(State=#http_client_state{cache_status = hit, cache_file_handle=FileHandle}) ->
+handle_get_body(State=#state{cache_status = hit, cache_file_handle=FileHandle}) ->
 	case file:read(FileHandle, 8192) of
 		{ok, Data} ->
-			{ok, Data, State};
+			{reply, Data, State};
 		eof ->
-			{ok, <<>>, State};
-		{error, Reason} ->
-			{error, Reason, State}
+			{reply, <<>>, State}
 	end;
 
 %% Cache Miss functions
 
 %% Empty buffer
-get_body(State=#http_client_state{
+handle_get_body(State=#state{
              client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>, cache_status=miss, cache_file_helper=FileHelper})->
-	case Transport:recv(Socket, 0, T) of
-		{ok, Data} ->
-			agilitycache_http_client_miss_helper:write(Data, FileHelper),
-			{ok, Data, State};
-		{error, timeout} ->
-			{error, timeout, State};
-		{error, closed} ->
-			{error, closed, State};
-		Other ->
-			{error, Other, State}
-	end;
+	{ok, Data} = Transport:recv(Socket, 0, T),
+	agilitycache_http_client_miss_helper:write(Data, FileHelper),
+	{reply, Data, State};
 %% Non empty buffer
-get_body(State=#http_client_state{client_buffer=Buffer, cache_status=miss, cache_file_helper=FileHelper})->
+handle_get_body(State=#state{client_buffer=Buffer, cache_status=miss, cache_file_helper=FileHelper})->
 	agilitycache_http_client_miss_helper:write(Buffer, FileHelper),
-	{ok, Buffer, State#http_client_state{client_buffer = <<>>}};
+	{reply, Buffer, State#state{client_buffer = <<>>}};
 
 %% No cache functions
 
 %% Empty buffer
-get_body(State=#http_client_state{
+handle_get_body(State=#state{
              client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>})->
-	case Transport:recv(Socket, 0, T) of
-		{ok, Data} ->
-			{ok, Data, State};
-		{error, timeout} ->
-			{error, timeout, State};
-		{error, closed} ->
-			{error, closed, State};
-		Other ->
-			{error, Other, State}
-	end;
+	{ok, Data} = Transport:recv(Socket, 0, T),
+	{reply, Data, State};
 %% Non empty buffer
-get_body(State=#http_client_state{client_buffer=Buffer})->
-	{ok, Buffer, State#http_client_state{client_buffer = <<>>}}.
+handle_get_body(State=#state{client_buffer=Buffer})->
+	{reply, Buffer, State#state{client_buffer = <<>>}}.
 
--spec send_data(iolist(), http_client_state()) -> {ok, http_client_state()} | {error, any(), http_client_state()}.
-send_data(Data, State = #http_client_state { transport = Transport, client_socket = Socket } ) ->
-	case Transport:send(Socket, Data) of
-		ok ->
-			{ok, State};
-		{error, Reason} ->
-			{error, Reason, State}
-	end.
+handle_send_data(Data, State = #state { transport = Transport, client_socket = Socket } ) ->
+	ok = Transport:send(Socket, Data),
+	{reply, ok, State}.
 
--spec stop(keepalive | close, http_client_state()) -> {ok, http_client_state()}.
-stop(Type, State=#http_client_state{cache_status=hit, cache_file_handle=FileHandle, cache_info=CachedFileInfo, cache_id=FileId}) ->
+handle_end_reply(State=#state{cache_status=hit, cache_file_handle=FileHandle, cache_info=CachedFileInfo, cache_id=FileId}) ->
 	%% Salvando age
 	agilitycache_database:write_info(FileId, CachedFileInfo#cached_file_info{age=calendar:universal_time()}),
 	file:close(FileHandle),
@@ -190,142 +226,118 @@ stop(Type, State=#http_client_state{cache_status=hit, cache_file_handle=FileHand
 			       end
 	       end,
 	mnesia:transaction(Fun1),
-	case Type of
-		keepalive ->
-			{ok, State#http_client_state{cache_status=undefined, cache_file_handle=undefined}};
-		close ->
-			close(State)
-	end;
-stop(Type, State=#http_client_state{cache_status=miss, cache_file_helper=FileHelper, cache_id=FileId}) ->
+	{reply, ok, State#state{cache_status=undefined, cache_file_handle=undefined}};
+handle_end_reply(State=#state{cache_status=miss, cache_file_helper=FileHelper, cache_id=FileId}) ->
 	%% Removendo índice do db
-	mnesia:transaction(fun() -> mnesia:delete({agilitycache_transit_file, FileId}) end),
+	lager:debug("Removendo índice do db: ~p", [FileId]),
+	mnesia:transaction(fun() -> mnesia:delete({agilitycache_transit_file, FileId}), ok end),
 	agilitycache_http_client_miss_helper:close(FileHelper),
-	case Type of
-		keepalive ->
-			{ok, State#http_client_state{cache_status=undefined, cache_file_helper=undefined}};
-		close ->
-			close(State)
-	end;
-stop(keepalive, State) ->
-	{ok, State};
-stop(close, State) ->
-	close(State).
+	{reply, ok, State#state{cache_status=undefined, cache_file_helper=undefined}};
+handle_end_reply(State) ->
+	{reply, ok, State}.
+
+handle_stop(State) ->
+	{stop, normal, ok, State#state{client_socket=undefined}}.
 
 %%
 %% Local Functions
 %%
 
--spec close(http_client_state()) -> {ok, http_client_state()}.
-close(undefined) ->
-        {ok, #http_client_state{}};
-close(State = #http_client_state{transport=Transport, client_socket=Socket}) ->
-	case Socket of
-		undefined ->
-			{ok, State};
-		_ ->
-			Transport:close(Socket),
-			{ok, State#http_client_state{client_socket=undefined}}
-	end.
+start_connect(HttpReq =
+	              #http_req{ uri=_Uri=#http_uri{ domain = Host, port = Port}}, State=#state{transport = Transport, timeout = Timeout}) ->
 
--spec start_send_request(#http_req{},agilitycache_http_client:http_client_state()) ->
-		                        {'error',_,agilitycache_http_client:http_client_state()} |
-		                        {'ok',#http_req{},agilitycache_http_client:http_client_state()}.
-start_send_request(HttpReq, State = #http_client_state{client_socket=Socket, transport=Transport}) ->
+	BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
+	TransOpts = [
+	             %%{nodelay, true}%, %% We want to be informed even when packages are small
+	             {send_timeout, Timeout}, %% If we couldn't send a message in Timeout time something is definitively wrong...
+	             {send_timeout_close, true}, %%... and therefore the connection should be closed
+	             {buffer, BufferSize},
+	             {delay_send, true}
+	            ],
+	lager:debug("Host: ~p Port: ~p", [Host, Port]),
+	{ok, Socket} = folsom_metrics:histogram_timed_update(connection_time,
+	                                          Transport,
+	                                          connect,
+	                                          [binary_to_list(Host), Port, TransOpts, Timeout]),
+	start_send_request(HttpReq, State#state{client_socket = Socket}).
+
+start_send_request(HttpReq, State = #state{client_socket=Socket, transport=Transport}) ->
 	%%lager:debug("ClientSocket buffer ~p,~p,~p",
 	%%        [inet:getopts(Socket, [buffer]), inet:getopts(Socket, [recbuf]), inet:getopts(Socket, [sndbuf]) ]),
 	Packet = agilitycache_http_req:request_head(HttpReq),
 	lager:debug("Packet: ~p~n", [Packet]),
 	lager:debug("HttpReq: ~p~n", [HttpReq]),
-	case Transport:send(Socket, Packet) of
-		ok ->
-			{ok, HttpReq, State};
-		{error, Reason} ->
-			{error, Reason, State}
-	end.
+	ok = Transport:send(Socket, Packet),	
+	{reply, HttpReq, State}.
 
--spec start_parse_reply(agilitycache_http_client:http_client_state()) -> {'ok',agilitycache_http_client:http_client_state()} | {'error',_,agilitycache_http_client:http_client_state()}.
-start_parse_reply(State=#http_client_state{client_buffer=Buffer}) ->
+start_parse_reply(State=#state{client_buffer=Buffer}) ->
 	case erlang:decode_packet(http_bin, Buffer, []) of
 		{ok, Reply, Rest} ->
-			parse_reply({Reply, State#http_client_state{client_buffer=Rest}});
+			parse_reply({Reply, State#state{client_buffer=Rest}});
 		{more, _Length} ->
-			wait_reply(State);
-		{error, Reason} ->
-			{error, Reason, State}
+			wait_reply(State)
 	end.
 
--spec wait_reply(agilitycache_http_client:http_client_state()) -> {'ok',agilitycache_http_client:http_client_state()} | {'error',_,agilitycache_http_client:http_client_state()}.
-wait_reply(State = #http_client_state{client_socket=Socket, transport=Transport, timeout=T, client_buffer=Buffer}) ->
-	case Transport:recv(Socket, 0, T) of
-		{ok, Data} ->
-			start_parse_reply(State#http_client_state{client_buffer= << Buffer/binary, Data/binary >>});
-		{error, Reason} ->
-			{error, Reason, State}
-	end.
+wait_reply(State = #state{client_socket=Socket, transport=Transport, timeout=T, client_buffer=Buffer}) ->
+	{ok, Data} = Transport:recv(Socket, 0, T),
+	start_parse_reply(State#state{client_buffer= << Buffer/binary, Data/binary >>}).
 
--spec parse_reply({{'http_error',binary() | [any()]} | {'http_response',{_,_},non_neg_integer(),binary() | [any()]},agilitycache_http_client:http_client_state()}) -> {'ok',agilitycache_http_client:http_client_state()} | {'error',_,agilitycache_http_client:http_client_state()}.
 parse_reply({{http_response, Version, Status, String}, State}) ->
 	ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
 	start_parse_reply_header(
-	    State#http_client_state{http_rep=#http_rep{connection=ConnAtom, status=Status, version=Version, string=String}}
+	    State#state{http_rep=#http_rep{connection=ConnAtom, status=Status, version=Version, string=String}}
 	   );
-parse_reply({{http_error, <<"\r\n">>}, State=#http_client_state{rep_empty_lines=_N, max_empty_lines=_N}}) ->
-	{error, {http_error, 400}, State};
-parse_reply({_Data={http_error, <<"\r\n">>}, State=#http_client_state{rep_empty_lines=N}}) ->
-	start_parse_reply(State#http_client_state{rep_empty_lines=N + 1});
-parse_reply({{http_error, _Any}, State}) ->
-	{error, {http_error, 400}, State}.
+parse_reply({{http_error, <<"\r\n">>}, State=#state{rep_empty_lines=N, max_empty_lines=N}}) ->
+	{stop, {http_error, 400}, {error, {http_error, 400}}, State};
+parse_reply({_Data={http_error, <<"\r\n">>}, State=#state{rep_empty_lines=N}}) ->
+	start_parse_reply(State#state{rep_empty_lines=N + 1}).
 
--spec start_parse_reply_header(agilitycache_http_client:http_client_state()) -> {'ok',agilitycache_http_client:http_client_state()} | {'error',_,agilitycache_http_client:http_client_state()}.
-start_parse_reply_header(State=#http_client_state{client_buffer=Buffer}) ->
+start_parse_reply_header(State=#state{client_buffer=Buffer}) ->
 	case erlang:decode_packet(httph_bin, Buffer, []) of
 		{ok, Header, Rest} ->
-			parse_reply_header(Header, State#http_client_state{client_buffer=Rest});
+			parse_reply_header(Header, State#state{client_buffer=Rest});
 		{more, _Length} ->
-			wait_reply_header(State);
-		{error, _Reason} ->
-			{error, {http_error, 400}, State}
+			wait_reply_header(State)
 	end.
 
--spec wait_reply_header(agilitycache_http_client:http_client_state()) -> {'ok',agilitycache_http_client:http_client_state()} | {'error',_,agilitycache_http_client:http_client_state()}.
-wait_reply_header(State=#http_client_state{client_socket=Socket,
+wait_reply_header(State=#state{client_socket=Socket,
                                            transport=Transport, timeout=T, client_buffer=Buffer}) ->
-	case Transport:recv(Socket, 0, T) of
-		{ok, Data} ->
-			start_parse_reply_header(State#http_client_state{client_buffer= << Buffer/binary, Data/binary >>});
-		{error, Reason} ->
-			{error, {error, Reason}, State}
-	end.
-
--spec parse_reply_header('http_eoh' | {'http_error',binary() | string()} | {'http_header',integer(),atom() | binary(),_,binary() | [byte()]},agilitycache_http_client:http_client_state()) -> {'ok',agilitycache_http_client:http_client_state()} | {'error',_,agilitycache_http_client:http_client_state()}.
-parse_reply_header({http_header, _I, 'Connection', _R, Connection}, State=#http_client_state{http_rep=Rep}) ->
+	{ok, Data} = Transport:recv(Socket, 0, T),
+	start_parse_reply_header(State#state{client_buffer= << Buffer/binary, Data/binary >>}).
+	
+parse_reply_header({http_header, _I, 'Connection', _R, Connection}, State=#state{http_rep=Rep}) ->
 	ConnAtom = agilitycache_http_protocol_parser:response_connection_parse(Connection),
 	start_parse_reply_header(
-	    State#http_client_state{
+	    State#state{
 	        http_rep=Rep#http_rep{connection=ConnAtom,
 	                              headers=[{'Connection', Connection}|Rep#http_rep.headers]
 	                             }});
-parse_reply_header({http_header, _I, Field, _R, Value}, State=#http_client_state{http_rep=Rep}) ->
+parse_reply_header({http_header, _I, Field, _R, Value}, State=#state{http_rep=Rep}) ->
 	Field2 = agilitycache_http_protocol_parser:format_header(Field),
 	start_parse_reply_header(
-	    State#http_client_state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
+	    State#state{http_rep=Rep#http_rep{headers=[{Field2, Value}|Rep#http_rep.headers]}});
 %% Cache Miss Request
-parse_reply_header(http_eoh, State = #http_client_state{cache_status = miss}) ->
+parse_reply_header(http_eoh, State = #state{cache_status = miss}) ->
 	check_cacheability(State);
 %% Normal request
 parse_reply_header(http_eoh, State) ->
 	%%  OK, esperar pedido do cliente.
-	{ok, State};
-parse_reply_header({http_error, <<"\r\n">>}, State=#http_client_state{rep_empty_lines=N, max_empty_lines=N}) ->
+	{reply, ok, State};
+parse_reply_header({http_error, <<"\r\n">>}, State=#state{rep_empty_lines=N, max_empty_lines=N}) ->
 	{error, {http_error, 400}, State};
-parse_reply_header({http_error, <<"\r\n">>}, State=#http_client_state{rep_empty_lines=N}) ->
-	start_parse_reply(State#http_client_state{rep_empty_lines=N + 1});
-parse_reply_header({http_error, <<"\n">>}, State=#http_client_state{rep_empty_lines=N, max_empty_lines=N}) ->
+parse_reply_header({http_error, <<"\r\n">>}, State=#state{rep_empty_lines=N}) ->
+	start_parse_reply(State#state{rep_empty_lines=N + 1});
+parse_reply_header({http_error, <<"\n">>}, State=#state{rep_empty_lines=N, max_empty_lines=N}) ->
 	{error, {http_error, 400}, State};
-parse_reply_header({http_error, <<"\n">>}, State=#http_client_state{rep_empty_lines=N}) ->
-	start_parse_reply(State#http_client_state{rep_empty_lines=N + 1});
-parse_reply_header({http_error, _Bin}, State) ->
-	{error, {http_error, 500}, State}.
+parse_reply_header({http_error, <<"\n">>}, State=#state{rep_empty_lines=N}) ->
+	start_parse_reply(State#state{rep_empty_lines=N + 1}).
+
+close_socket(#state{client_socket=undefined}) ->
+	ok;
+close_socket(#state{transport=Transport, client_socket=Socket}) ->
+	Transport:close(Socket).		
+
+
 
 %%% ============================
 %%% Plugin logic
@@ -333,8 +345,7 @@ parse_reply_header({http_error, _Bin}, State) ->
 %%% ============================
 
 %% Vou limpar o cache_http_req, pois só uso aqui
--spec check_cacheability(agilitycache_http_client:http_client_state()) -> {'ok',agilitycache_http_client:http_client_state()}.
-check_cacheability(State = #http_client_state{http_rep=HttpRep, cache_plugin = Plugin, cache_http_req = HttpReq, cache_id = FileId}) ->
+check_cacheability(State = #state{http_rep=HttpRep, cache_plugin = Plugin, cache_http_req = HttpReq, cache_id = FileId}) ->
 	Cacheable = Plugin:cacheable(HttpReq, HttpRep),
 	lager:debug("Plugin: ~p~n", [Plugin]),
 	lager:debug("HttpReq: ~p~n", [HttpReq]),
@@ -350,14 +361,13 @@ check_cacheability(State = #http_client_state{http_rep=HttpRep, cache_plugin = P
 			agilitycache_database:write_info(FileId, CachedFileInfo),
 			{ok, Helper} = agilitycache_http_client_miss_helper:start_link(),
 			agilitycache_http_client_miss_helper:open(FileId, Helper),
-			{ok, State#http_client_state{cache_http_req = undefined, cache_info = CachedFileInfo, cache_file_helper = Helper}};
+			{reply, ok, State#state{cache_http_req = undefined, cache_info = CachedFileInfo, cache_file_helper = Helper}};
 		false ->
 			lager:debug("Miss no_cache after cacheability"),
-			{ok, State#http_client_state{cache_status = undefined, cache_http_req = undefined}}
+			{reply, ok, State#state{cache_status = undefined, cache_http_req = undefined}}
 	end.
 
--spec check_pre_cacheability(_,agilitycache_http_client:http_client_state(),fun((_,_) -> _)) -> {'error',_,agilitycache_http_client:http_client_state()} | {'ok',_,agilitycache_http_client:http_client_state()}.
-check_pre_cacheability(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
+check_pre_cacheability(HttpReq, State = #state{cache_plugin = Plugin}, Fun) ->
 	Cacheable = Plugin:cacheable(HttpReq),
 	lager:debug("Plugin: ~p~n", [Plugin]),
 	lager:debug("HttpReq: ~p~n", [HttpReq]),
@@ -372,8 +382,7 @@ check_pre_cacheability(HttpReq, State = #http_client_state{cache_plugin = Plugin
 	end.
 
 
--spec check_hit(_,agilitycache_http_client:http_client_state(),fun((_,_) -> _)) -> {'error',_,agilitycache_http_client:http_client_state()} | {'ok',_,agilitycache_http_client:http_client_state()}.
-check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
+check_hit(HttpReq, State = #state{cache_plugin = Plugin}, Fun) ->
 	FileId = Plugin:file_id(HttpReq),
 	lager:debug("FileId: ~p <-> ~p~n", [agilitycache_utils:hexstring(FileId), FileId]),
 
@@ -390,10 +399,10 @@ check_hit(HttpReq, State = #http_client_state{cache_plugin = Plugin}, Fun) ->
 			       end,
 			case mnesia:transaction(Fun1) of
 				{atomic, ok} ->
-					Fun(HttpReq, State#http_client_state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
+					Fun(HttpReq, State#state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
 				{atomic, error} ->
 					lager:debug("Denied by mnesia"),
-					Fun(HttpReq, State#http_client_state{cache_status = undefined})
+					Fun(HttpReq, State#state{cache_status = undefined})
 			end;
 		{ok, Path} ->
 			check_hit2(HttpReq, State, FileId, Path, Fun)
@@ -407,7 +416,7 @@ check_hit2(HttpReq, State, FileId, Path, Fun) ->
 			handle_expired(Now > MaxAge, HttpReq, State, FileId, Path, MaxAge, CachedFileInfo0, Fun);
 		{error, _} = Z ->
 			lager:debug("Database error: ~p", [Z]),
-			Fun(HttpReq, State#http_client_state{cache_status = undefined})
+			Fun(HttpReq, State#state{cache_status = undefined})
 	end.
 handle_expired(false, HttpReq, State, FileId, Path, MaxAge, CachedFileInfo, Fun) ->
 	lager:debug("Cache Hit: ~p", [Path]),
@@ -433,12 +442,12 @@ handle_expired(false, HttpReq, State, FileId, Path, MaxAge, CachedFileInfo, Fun)
 	       end,
 	case mnesia:transaction(Fun2) of
 		{atomic, ok} ->
-			{ok, HttpReq,
-			 State#http_client_state{cache_status = hit,
+			{reply, HttpReq,
+			 State#state{cache_status = hit,
 			                         cache_info = CachedFileInfo, cache_id = FileId, cache_file_path = Path}};
 		{atomic, error} ->
 			lager:debug("Denied by mnesia"),
-			Fun(HttpReq, State#http_client_state{cache_status = undefined})
+			Fun(HttpReq, State#state{cache_status = undefined})
 	end;
 handle_expired(true, HttpReq, State, FileId, _Path, MaxAge, _CachedFileInfo, Fun) ->
 	%% Expired
@@ -454,15 +463,13 @@ handle_expired(true, HttpReq, State, FileId, _Path, MaxAge, _CachedFileInfo, Fun
 	       end,
 	case mnesia:transaction(Fun3) of
 		{atomic, ok} ->
-			Fun(HttpReq, State#http_client_state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
+			Fun(HttpReq, State#state{cache_status = miss, cache_http_req = HttpReq, cache_id = FileId});
 		{atomic, error} ->
 			lager:debug("Denied by mnesia"),
-			Fun(HttpReq, State#http_client_state{cache_status = undefined})
+			Fun(HttpReq, State#state{cache_status = undefined})
 	end.
 
 
--spec check_plugins(_,agilitycache_http_client:http_client_state(),
-                    fun((_,_) -> _)) -> {'error',_,agilitycache_http_client:http_client_state()} | {'ok',_,agilitycache_http_client:http_client_state()}.
 check_plugins(HttpReq, State, Fun) ->
 	Plugins = agilitycache_utils:get_app_env(plugins, [{cache, []}]),
 	CachePlugins = proplists:get_value(cache, Plugins, []) ++ [agilitycache_cache_plugin_default],
@@ -470,15 +477,12 @@ check_plugins(HttpReq, State, Fun) ->
 	lager:debug("HttpReq: ~p~n", [HttpReq]),
 	InCharge = test_in_charge_plugins(CachePlugins, HttpReq, agilitycache_cache_plugin_default),
 	lager:debug("InCharge: ~p~n", [InCharge]),
-	check_pre_cacheability(HttpReq, State#http_client_state{cache_plugin = InCharge}, Fun).
+	check_pre_cacheability(HttpReq, State#state{cache_plugin = InCharge}, Fun).
 
--spec test_in_charge_plugins([any()],_,'agilitycache_cache_plugin_default') -> atom() | tuple().
 test_in_charge_plugins([], _, Default) ->
 	Default;
 test_in_charge_plugins([Plugin | T], HttpReq, Default) ->
 	case Plugin:in_charge(HttpReq) of
-		true ->
-			Plugin;
-		false ->
-			test_in_charge_plugins(T, HttpReq, Default)
+		true ->	Plugin;
+		false -> test_in_charge_plugins(T, HttpReq, Default)
 	end.
