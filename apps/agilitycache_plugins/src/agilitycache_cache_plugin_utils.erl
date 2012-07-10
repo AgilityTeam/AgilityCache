@@ -2,6 +2,7 @@
 
 -export([
          parse_max_age/1,
+         parse_last_modified/1,
          param_val/2,
          param_val/3]).
 
@@ -42,6 +43,22 @@ parse_expires(HttpRep) ->
 					Date0;
 				{error, _} ->
 					lager:debug("Expires invalid: ~p", [Expires]),
+					calendar:universal_time()
+			end
+	end.
+
+-spec parse_last_modified(#http_rep{}) -> calendar:datetime().
+parse_last_modified(HttpRep) ->
+	case agilitycache_http_rep:header('Last-Modified', HttpRep) of
+		{undefined, _} ->
+			lager:debug("Last-Modified undefined"),
+			calendar:universal_time();
+		{LastModified, _} ->
+			case agilitycache_date_time:convert_request_date(LastModified) of
+				{ok, Date0} ->
+					Date0;
+				{error, _} ->
+					lager:debug("Last-Modified invalid: ~p", [LastModified]),
 					calendar:universal_time()
 			end
 	end.
