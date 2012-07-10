@@ -24,7 +24,8 @@
           {cache, [
             %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
             agilitycache_cache_plugin_orkut,
-            agilitycache_cache_plugin_imgur%%,
+            agilitycache_cache_plugin_imgur,
+            agilitycache_cache_plugin_accuradio%%,
             %%agilitycache_plugin_youtube_video,
             %%agilitycache_plugin_windows_update,
             %%agilitycache_plugin_file_hosters,

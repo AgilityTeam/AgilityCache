@@ -2,7 +2,7 @@
 
 -export([
          parse_max_age/1,
-         parse_last_modified/1,
+         max_age_estimate/1,
          param_val/2,
          param_val/3]).
 
@@ -16,6 +16,16 @@
 parse_max_age(HttpRep) ->
 	calendar:gregorian_seconds_to_datetime(max(calendar:datetime_to_gregorian_seconds(parse_cache_control(HttpRep)),
 	                                           calendar:datetime_to_gregorian_seconds(parse_expires(HttpRep)))).
+
+-spec max_age_estimate(#http_rep{}) -> calendar:datetime().
+max_age_estimate(HttpRep) ->
+	LastModified = parse_last_modified(HttpRep),		
+	Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+	LastModifiedSeconds = calendar:datetime_to_gregorian_seconds(LastModified),
+	Diff =  Now - LastModifiedSeconds,
+	Total = Now + Diff,
+	calendar:gregorian_seconds_to_datetime(Total).
+
 
 %% @todo usar s-maxage também
 -spec parse_cache_control(#http_rep{}) -> calendar:datetime().
