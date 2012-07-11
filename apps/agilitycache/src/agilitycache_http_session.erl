@@ -32,8 +32,7 @@
             max_empty_lines = 5 :: integer(),
             timeout = 5000 :: timeout(),
             keepalive = both :: both | req | disabled,
-            keepalive_default_timeout = 300 :: non_neg_integer(),
-            keepalive_timeout = 0 :: timeout(),
+            keepalive_timeout = 120 :: non_neg_integer(), %% In seconds
             start_time = 0 :: integer(),
             restant = 0 :: integer()
            }).
@@ -80,18 +79,17 @@ init({ServerSocket, Transport, Opts}) ->
 	KeepAliveOpts = agilitycache_utils:get_app_env(keepalive,
 	                                               [{type, both},
 	                                                {max_timeout,
-	                                                 300}]),
+	                                                 120}]),
 	KeepAlive = proplists:get_value(type, KeepAliveOpts, both),
-	KeepAliveDefault = proplists:get_value(max_timeout,
-	                                       KeepAliveOpts,
-	                                       300),
+	KeepAliveDefault = proplists:get_value(max_timeout, KeepAliveOpts, 120),
+
 	{ok, start_handle_request,
 	 #state{http_server=HttpServer,
 	 		timeout=Timeout,
 	        max_empty_lines=MaxEmptyLines,
 	        transport=Transport,
 	        keepalive = KeepAlive,
-	        keepalive_default_timeout = KeepAliveDefault,
+	        keepalive_timeout = KeepAliveDefault,
 	        start_time = StartTime}}.
 
 %% Events
@@ -236,24 +234,12 @@ begin_stop(_Event, _From, #state{keepalive=disabled} = State) ->
 begin_stop(_Event, _From, #state{keepalive=KeepAliveType,
                                  http_server=HttpServer,
                                  http_client=HttpClient,
-                                 keepalive_default_timeout=
-	                                 KeepAliveDefaultTimeout,
                                  start_time=StartTime} = State) ->
 	HttpReq = agilitycache_http_server:get_http_req(HttpServer),
 	HttpRep = agilitycache_http_client:get_http_rep(HttpClient),
 	case {KeepAliveType, HttpReq#http_req.connection,
 	      HttpRep#http_rep.connection} of
-		{both, keepalive, keepalive} ->
-			ReqKeepAliveTimeout =
-				agilitycache_http_protocol_parser:keepalive(
-				    HttpReq#http_req.headers,
-				    KeepAliveDefaultTimeout)*1000,
-			RepKeepAliveTimeout =
-				agilitycache_http_protocol_parser:keepalive(
-				    HttpRep#http_rep.headers,
-				    KeepAliveDefaultTimeout)*1000,
-			KeepAliveTimeout = min(ReqKeepAliveTimeout,
-			                       RepKeepAliveTimeout),
+		{both, keepalive, keepalive} ->		
 			agilitycache_http_server:end_request(HttpServer),
 			agilitycache_http_client:end_reply(HttpClient),
 
@@ -261,22 +247,18 @@ begin_stop(_Event, _From, #state{keepalive=KeepAliveType,
 			folsom_metrics:notify(
 			    {total_proxy_time,
 			     timer:now_diff(EndTime, StartTime)}),
-			{reply, continue, start_handle_both_keepalive_request, State#state{keepalive_timeout=KeepAliveTimeout}};
+			{reply, continue, start_handle_both_keepalive_request, State};
 		{_, keepalive, close} ->
 			agilitycache_http_server:end_request(HttpServer),
 			agilitycache_http_client:end_reply(HttpClient),
 			agilitycache_http_client:stop(HttpClient),
 			agilitycache_http_server:set_http_req(HttpServer, #http_req{}), %% Vazio
-			KeepAliveTimeout =
-				agilitycache_http_protocol_parser:keepalive(
-				    HttpReq#http_req.headers,
-				    KeepAliveDefaultTimeout)*1000,
 			EndTime = os:timestamp(),
 			folsom_metrics:notify(
 			    {total_proxy_time,
 			     timer:now_diff(EndTime, StartTime)}),
 			{reply, continue,
-			 start_handle_req_keepalive_request, State#state{keepalive_timeout = KeepAliveTimeout}};
+			 start_handle_req_keepalive_request, State};
 		_ ->
 			{stop, normal, ok, State}
 	end.
