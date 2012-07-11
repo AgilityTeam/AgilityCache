@@ -32,7 +32,7 @@
             max_empty_lines = 5 :: integer(),
             timeout = 5000 :: timeout(),
             keepalive = both :: both | req | disabled,
-            keepalive_timeout = 120 :: non_neg_integer(), %% In seconds
+            keepalive_timeout = 120000 :: timeout(),
             start_time = 0 :: integer(),
             restant = 0 :: integer()
            }).
@@ -76,12 +76,9 @@ init({ServerSocket, Transport, Opts}) ->
 	{ok, HttpServer} = agilitycache_http_server:start_link(Transport, ServerSocket, Timeout, MaxEmptyLines),
 	Transport:controlling_process(ServerSocket, HttpServer),
 
-	KeepAliveOpts = agilitycache_utils:get_app_env(keepalive,
-	                                               [{type, both},
-	                                                {max_timeout,
-	                                                 120}]),
+	KeepAliveOpts = agilitycache_utils:get_app_env(keepalive,[]),
 	KeepAlive = proplists:get_value(type, KeepAliveOpts, both),
-	KeepAliveDefault = proplists:get_value(max_timeout, KeepAliveOpts, 120),
+	KeepAliveDefault = proplists:get_value(max_timeout, KeepAliveOpts, 120000),
 
 	{ok, start_handle_request,
 	 #state{http_server=HttpServer,
@@ -268,16 +265,31 @@ start_handle_req_keepalive_request(_Event, _From, #state{
                                                keepalive_timeout =
 	                                               KeepAliveTimeout} =
 	                                   State) ->
-	ok = agilitycache_http_server:read_keepalive_request(KeepAliveTimeout, HttpServer),
+	ok = agilitycache_http_server:read_keepalive_request(HttpServer, KeepAliveTimeout),
 	{reply, continue, read_reply, State}.
 
 start_handle_both_keepalive_request(_Event, _From,
                                     #state{http_server=HttpServer,
+                                    		http_client=HttpClient,
                                            keepalive_timeout=KeepAliveTimeout} = State) ->
-	try agilitycache_http_server:read_keepalive_request(
-	         KeepAliveTimeout, HttpServer) of
+	try agilitycache_http_server:read_keepalive_request(HttpServer, KeepAliveTimeout) of
 		ok ->
-			{reply, continue, read_both_keepalive_reply, State}
+			%% Check if is same host:port
+			OldDomainPort = agilitycache_http_client:get_host_port(HttpClient),
+
+			HttpReq = agilitycache_http_server:get_http_req(HttpServer),
+			NewHostPort = {HttpReq#http_req.uri#http_uri.domain, HttpReq#http_req.uri#http_uri.port},
+
+			case NewHostPort of 
+				OldDomainPort ->
+					lager:debug("Same host keepalive, right! ~p", [NewHostPort]),
+					{reply, continue, read_both_keepalive_reply, State};
+				_ ->
+					lager:debug("Different host keepalive :( ~p <-> ~p", [OldDomainPort, NewHostPort]),
+					agilitycache_http_client:end_reply(HttpClient),
+					agilitycache_http_client:stop(HttpClient),
+					{reply, continue, read_reply, State}
+			end
 	catch			 
 		error:closed ->
 			{reply, continue, read_reply, State}

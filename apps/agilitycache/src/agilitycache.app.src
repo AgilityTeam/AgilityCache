@@ -39,7 +39,7 @@
         {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 65535}]},
         {tcp_timeout, 5000},
         {dscp, [{hit, 12}]},
-        {keepalive, [{type, both}, {max_timeout, 300}]},
+        {keepalive, [{type, both}, {max_timeout, 120000}]},
         {database, [
             [{path, <<"/opt/agilitycache/var/cache/database">>}]
           ]}

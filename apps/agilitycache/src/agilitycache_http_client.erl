@@ -14,7 +14,8 @@
 	start_keepalive_request/2, 
 	start_receive_reply/1, 
 	get_http_rep/1, 
-	set_http_rep/2, 
+	set_http_rep/2,
+	get_host_port/1,
 	get_body/1, 
 	send_data/2, 
 	end_reply/1, 
@@ -30,6 +31,10 @@
           rep_empty_lines = 0 :: integer(),
           max_empty_lines :: non_neg_integer(),
           timeout = 5000 :: timeout(),
+          %% To support keepalive
+          domain         = undefined :: undefined | binary(),
+          port           = undefined :: undefined | inet:port_number(),
+          %%
           client_buffer = <<>> :: binary(),
           cache_plugin = agilitycache_cache_plugin_default :: module(),
           cache_status = undefined :: undefined | miss | hit,
@@ -64,6 +69,9 @@ get_http_rep(Pid) ->
 set_http_rep(Pid, HttpRep) ->
 	gen_server:call(Pid, {set_http_rep, HttpRep}, infinity).
 
+get_host_port(Pid) ->
+	gen_server:call(Pid, get_host_port, infinity).
+
 get_body(Pid) ->
 	gen_server:call(Pid, get_body, infinity).
 
@@ -92,7 +100,9 @@ handle_call(start_receive_reply, _From, State) ->
 handle_call(get_http_rep, _From, State) ->
 	handle_get_http_rep(State);
 handle_call({set_http_rep, HttpReq}, _From, State) ->
-	handle_set_http_rep(HttpReq, State);	
+	handle_set_http_rep(HttpReq, State);
+handle_call(get_host_port, _From, State) ->
+	handle_get_host_port(State);	
 handle_call(get_body, _From, State) ->
 	handle_get_body(State);
 handle_call({send_data, Data}, _From, State) ->
@@ -145,6 +155,9 @@ handle_get_http_rep(#state{http_rep = HttpRep} = State) ->
 
 handle_set_http_rep(HttpRep, State) ->
 	{reply, ok, State#state{http_rep = HttpRep}}.
+
+handle_get_host_port(#state{domain=Host, port=Port} = State) ->
+	{reply, {Host, Port}, State}.
 
 handle_start_request(HttpReq, State) ->
 	check_plugins(HttpReq, State, fun start_connect/2).
@@ -245,7 +258,7 @@ start_connect(HttpReq =
 	                                          Transport,
 	                                          connect,
 	                                          [binary_to_list(Host), Port, TransOpts, Timeout]),
-	start_send_request(HttpReq, State#state{client_socket = Socket}).
+	start_send_request(HttpReq, State#state{client_socket = Socket, domain=Host, port=Port}).
 
 start_send_request(HttpReq, State = #state{client_socket=Socket, transport=Transport}) ->
 	%%lager:debug("ClientSocket buffer ~p,~p,~p",
