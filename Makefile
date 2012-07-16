@@ -1,5 +1,5 @@
 DIALYZER = dialyzer
-REBAR=`which rebar || ./rebar`
+REBAR=`which rebar 2> /dev/null || echo './rebar'`
 
 all: deps compile
 
