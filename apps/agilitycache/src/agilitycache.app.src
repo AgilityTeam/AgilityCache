@@ -1,3 +1,4 @@
+%% -*- mode: erlang; -*-
 %% This file is part of AgilityCache, a web caching proxy.
 %%
 %% Copyright (C) 2011, 2012 Joaquim Pedro França Simão
@@ -15,7 +16,6 @@
 %% You should have received a copy of the GNU Affero General Public License
 %% along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-%% -*- mode: erlang; -*-
 {application, agilitycache,
   [
     {description, "A powerfull http proxy"},
