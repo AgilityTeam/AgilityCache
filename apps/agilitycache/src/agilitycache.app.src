@@ -1,3 +1,21 @@
+%% This file is part of AgilityCache, a web caching proxy.
+%%
+%% Copyright (C) 2011, 2012 Joaquim Pedro França Simão
+%%
+%% AgilityCache is free software: you can redistribute it and/or modify
+%% it under the terms of the GNU Affero General Public License as published by
+%% the Free Software Foundation, either version 3 of the License, or
+%% (at your option) any later version.
+%%
+%% AgilityCache is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU Affero General Public License for more details.
+%%
+%% You should have received a copy of the GNU Affero General Public License
+%% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+%% -*- mode: erlang; -*-
 {application, agilitycache,
   [
     {description, "A powerfull http proxy"},
@@ -6,7 +24,6 @@
         kernel,
         stdlib,
         os_mon,
-        %mnesia,
         cowboy,
         lager
       ]},
@@ -15,8 +32,9 @@
         {cache_dirs, [
             [
               {limit, 70}, %% Em porcentagem
-              {max_filesize, <<"500MiB">>},
-              {min_filesize, <<"1kiB">>},
+             %% Not implemented
+              %{max_filesize, <<"500MiB">>},
+              %{min_filesize, <<"1kiB">>},
               {path, <<"/opt/agilitycache/var/cache">>}
             ]
           ]},
@@ -24,7 +42,8 @@
           {cache, [
             %%{agilitycache_plugin_megaupload_premium, [{user, <<"user">>}, {password, <<"password">>}]},
             agilitycache_cache_plugin_orkut,
-            agilitycache_cache_plugin_imgur%%,
+            agilitycache_cache_plugin_imgur,
+            agilitycache_cache_plugin_accuradio%%,
             %%agilitycache_plugin_youtube_video,
             %%agilitycache_plugin_windows_update,
             %%agilitycache_plugin_file_hosters,
@@ -37,8 +56,8 @@
         {buffer_size, 1048576},
         {listen, [{acceptors, 1024}, {port, 8080}, {max_connections, 65535}]},
         {tcp_timeout, 5000},
-        {dscp, [{hit, 12}]},
-        {keepalive, [{type, both}, {max_timeout, 300}]},
+        %{dscp, [{hit, 12}]},
+        {keepalive, [{type, both}, {max_timeout, 120000}]},
         {database, [
             [{path, <<"/opt/agilitycache/var/cache/database">>}]
           ]}

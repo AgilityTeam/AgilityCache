@@ -1,14 +1,27 @@
+%% This file is part of AgilityCache, a web caching proxy.
+%%
+%% Copyright (C) 2011, 2012 Joaquim Pedro França Simão
+%%
+%% AgilityCache is free software: you can redistribute it and/or modify
+%% it under the terms of the GNU Affero General Public License as published by
+%% the Free Software Foundation, either version 3 of the License, or
+%% (at your option) any later version.
+%%
+%% AgilityCache is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU Affero General Public License for more details.
+%%
+%% You should have received a copy of the GNU Affero General Public License
+%% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 -module(agilitycache_http_protocol_parser).
--include("include/http.hrl").
+-include("http.hrl").
 
 -export([
 	 version_to_connection/1,
    response_connection/2,
    response_connection_parse/1,
-   response_proxy_connection/2,
-   response_proxy_connection_parse/1,
-   keepalive/2,
-   keepalive_parse/2,
 	 atom_to_connection/1,
 	 default_port/1,
 	 format_header/1,
@@ -44,64 +57,6 @@ response_connection([{Name, Value}|Tail], Connection) ->
 response_connection_parse(ReplyConn) ->
   Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
   cowboy_http:connection_to_atom(Tokens).
-
-
--spec response_proxy_connection(http_headers(), keepalive | close)
-  -> keepalive | close.
-
-response_proxy_connection([], Connection) ->
-  Connection;
-response_proxy_connection([{Name, Value}|Tail], Connection) ->
-  case Name of
-    'Proxy-Connection' -> response_proxy_connection_parse(Value);
-    Name when is_atom(Name) -> response_proxy_connection(Tail, Connection);
-    Name ->
-      Name2 = cowboy_bstr:to_lower(Name),
-      case Name2 of
-        <<"proxy-connection">> -> response_proxy_connection_parse(Value);
-        _Any -> response_proxy_connection(Tail, Connection)
-      end
-  end.
-
--spec response_proxy_connection_parse(binary()) -> keepalive | close.
-
-response_proxy_connection_parse(ReplyConn) ->
-  Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
-  cowboy_http:connection_to_atom(Tokens).
-
--spec keepalive(list(), Default::any()) -> Default::any().
-
-keepalive([], Default) ->
-  Default;
-keepalive([{Name, Value}|Tail], Default) ->
-  case Name of
-    'Keep-Alive' -> keepalive_parse(Value, Default);
-    Name when is_atom(Name) -> keepalive(Tail, Default);
-    Name ->
-      Name2 = cowboy_bstr:to_lower(Name),
-      case Name2 of
-        <<"keep-alive">> -> keepalive_parse(Value, Default);
-        _Any -> keepalive(Tail, Default)
-      end
-  end.
-
--spec keepalive_parse(list(), Default::any()) -> Default::any().
-
-keepalive_parse(Terms, Default) ->
-  Tokens = cowboy_http:list(Terms, fun (A, B) -> B(<<>>, A) end),
-  %%lager:debug("Tokens: ~p~nTerms: ~p~n", [Tokens, Terms]),
-  keepalive_parse_2(Tokens, Default).
-
--spec keepalive_parse_2(maybe_improper_list(),_) -> any().
-keepalive_parse_2([], Default) ->
-  Default;
-keepalive_parse_2([ << "timeout=", Limit/binary>> |_Tail], _Default) ->
-  list_to_integer(binary_to_list(Limit));
-keepalive_parse_2([_Any|Tail], Default) ->
-  %lager:debug("Tail: ~p~n", [Tail]),
-  keepalive_parse_2(Tail, Default).
-
-
 
 -spec atom_to_connection(keepalive) -> <<_:80>>;
 			(close) -> <<_:40>>.

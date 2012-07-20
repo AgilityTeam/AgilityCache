@@ -15,7 +15,7 @@
 %% You should have received a copy of the GNU Affero General Public License
 %% along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--module(agilitycache_cache_plugin_imgur).
+-module(agilitycache_cache_plugin_accuradio).
 -behaviour(agilitycache_cache_plugin).
 
 %% vimerl compile fix
@@ -36,11 +36,14 @@
 
 -spec name() -> binary().
 name() ->
-	<<"Imgur">>.
+	<<"AccuRadio">>.
 
 -spec in_charge(#http_req{}) -> boolean().
-in_charge(_HttpReq = #http_req{ uri=_Uri=#http_uri{domain = <<"i.imgur.com">>, port = 80 }}) ->
-	true;
+in_charge(_HttpReq = #http_req{ uri=_Uri=#http_uri{domain = <<"3393.voxcdn.com">>, port = 80, path=Path }}) ->
+	case binary:match(Path, [<<".m4a">>]) of
+		nomatch -> false;
+		_ -> true
+	end;
 in_charge(_) ->
 	false.
 
@@ -49,20 +52,20 @@ cacheable(_HttpReq) ->
 	true.
 
 -spec cacheable(#http_req{}, #http_rep{}) -> boolean().
-cacheable(_HttpReq, _HttpRep) ->
-	true.
+cacheable(_HttpReq, _HttpRep = #http_rep{status=200}) ->
+	true;
+cacheable(_, _) ->
+	false.
 
 -spec file_id(#http_req{}) -> cache_file_id().
-file_id(_HttpReq = #http_req{ uri=_Uri=#http_uri{path = RawPath, port = Port }}) ->
-	%%"http://Plugin." + name() + "/" + request.cannonical_url;
+file_id(_HttpReq = #http_req{ uri=_Uri=#http_uri{path = Path}}) ->
 	Name = name(),
-	BinaryPort = list_to_binary(integer_to_list(Port)),
-	File = filename:rootname(RawPath), % remove extensão
-	%% XXX: Put raw_qs?
-	B = <<"http://Plugin.", Name/binary, ":", BinaryPort/binary, File/binary>>,
+	B = <<"http://Plugin.", Name/binary, Path/binary>>,
 	lager:debug("B: ~p", [B]),
 	erlang:md5(B).
 
 -spec expires(#http_req{}, #http_rep{}) -> calendar:datetime().
 expires(_HttpReq, HttpRep) ->
-	agilitycache_cache_plugin_utils:parse_max_age(HttpRep).
+	%% VoxCdn doesn't send expires...
+	%% we estimate based on last-modified
+	agilitycache_cache_plugin_utils:max_age_estimate(HttpRep).

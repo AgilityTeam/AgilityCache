@@ -1,3 +1,20 @@
+%% This file is part of AgilityCache, a web caching proxy.
+%%
+%% Copyright (C) 2011, 2012 Joaquim Pedro França Simão
+%%
+%% AgilityCache is free software: you can redistribute it and/or modify
+%% it under the terms of the GNU Affero General Public License as published by
+%% the Free Software Foundation, either version 3 of the License, or
+%% (at your option) any later version.
+%%
+%% AgilityCache is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU Affero General Public License for more details.
+%%
+%% You should have received a copy of the GNU Affero General Public License
+%% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 -module(agilitycache_srv).
 
 -behaviour(gen_server).
@@ -66,7 +83,7 @@ init([]) ->
 	             %% We don't care if we have logs of pending connections, we'll process them anyway
 	             {backlog, proplists:get_value(backlog, ListenOpts, 128000)},
 	             {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
-                                                %{nodelay, true}, %% We want to be informed even when packages are small
+                 %%{nodelay, true}, %% We want to be informed even when packages are small
 	             {reuseaddr, true},
 	             %% If we couldn't send a message in Timeout time, something is definitively wrong...
 	             {send_timeout, Timeout},
@@ -169,28 +186,10 @@ start_metrics() ->
 	folsom_metrics:new_histogram(connection_time, none, infinity),
 	folsom_metrics:new_histogram(total_proxy_time, none, infinity).
 
--spec start_tables() -> {'aborted',_} | {'atomic',_}.
 start_tables() ->
-	mnesia:create_schema([node()]),
 	mnesia:start(),
-	mnesia:create_table(agilitycache_transit_file, [{disc_copies, [node()]}, {attributes, record_info(fields, agilitycache_transit_file)}]),
-	%% Deletes inconsistent records and incomplete files
-	Fun = fun() ->
-			      Keys = mnesia:select(agilitycache_transit_file,
-			                           [{#agilitycache_transit_file{status=downloading, id='$1', _='_'},
-			                             [], ['$1']}], read),
-			      [
-			       begin
-				       case agilitycache_cache_dir:find_file(FileId) of
-					       {ok, Path} ->
-						       %% Preventing from the warning of file:delete/1
-						       %% Warning!
-						       %% In a future release, a bad type for the Filename argument will probably generate an exception.
-						       catch file:delete(Path);
-					       _ ->
-						       ok
-				       end
-			       end || FileId <- Keys],
-			      mnesia:clear_table(agilitycache_transit_file)
-	      end,
-	mnesia:transaction(Fun).
+	mnesia:create_table(agilitycache_transit_file_reading, [{ram_copies, [node()]}, 
+		{attributes, record_info(fields, agilitycache_transit_file_reading)},
+		{type, bag}]),
+	mnesia:create_table(agilitycache_transit_file_downloading, [{ram_copies, [node()]}, 
+		{attributes, record_info(fields, agilitycache_transit_file_downloading)}]).

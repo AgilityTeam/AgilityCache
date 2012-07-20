@@ -1,3 +1,20 @@
+%% This file is part of AgilityCache, a web caching proxy.
+%%
+%% Copyright (C) 2011, 2012 Joaquim Pedro França Simão
+%%
+%% AgilityCache is free software: you can redistribute it and/or modify
+%% it under the terms of the GNU Affero General Public License as published by
+%% the Free Software Foundation, either version 3 of the License, or
+%% (at your option) any later version.
+%%
+%% AgilityCache is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU Affero General Public License for more details.
+%%
+%% You should have received a copy of the GNU Affero General Public License
+%% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 -module(agilitycache_http_server).
 
 -behaviour(gen_server).
@@ -164,6 +181,8 @@ wait_request(Timeout, State=#state{server_socket=Socket, transport=Transport, se
 start_parse_request(State=#state{server_buffer=Buffer}) ->
 	case erlang:decode_packet(http_bin, Buffer, []) of
 		{ok, Request, Rest} ->
+			lager:debug("parse_request: ~p", [Request]),
+			lager:debug("Rest: ~p", [Rest]),
 			parse_request(Request, State#state{server_buffer=Rest});
 		{more, _Length} ->
 			wait_request(State)	
@@ -225,6 +244,8 @@ parse_request({http_error, <<"\n">>}, State=#state{req_empty_lines=N}) ->
 start_parse_request_header(State=#state{server_buffer=Buffer}) ->
 	case erlang:decode_packet(httph_bin, Buffer, []) of
 		{ok, Header, Rest} ->
+			lager:debug("parse_request_header: ~p", [Header]),
+			lager:debug("Rest: ~p", [Rest]),
 			parse_request_header(Header, State#state{server_buffer=Rest});
 		{more, _Length} ->
 			wait_request_header(State)
@@ -261,26 +282,16 @@ parse_request_header({http_header, _I, 'Connection', _R, Connection}, State = #s
 	ConnAtom = agilitycache_http_protocol_parser:response_connection_parse(Connection),
 	start_parse_request_header(State#state{http_req=Req#http_req{connection=ConnAtom,
 		   headers=[{'Connection', Connection}|Req#http_req.headers]}});
-parse_request_header({http_header, _I, 'Proxy-Connection', _R, _Connection}, State = #state{http_req=Req}) ->
-	%%ConnAtom = agilitycache_http_protocol_parser:response_proxy_connection_parse(Connection),
-	%% Desabilitando keepalive em proxy-connection
-	ConnAtom = close,
-	start_parse_request_header(State#state{http_req=Req#http_req{connection=ConnAtom}});
 parse_request_header({http_header, _I, Field, _R, Value}, State = #state{http_req=Req}) ->
 	Field2 = agilitycache_http_protocol_parser:format_header(Field),
 	start_parse_request_header(State#state{http_req=Req#http_req{headers=[{Field2, Value}|Req#http_req.headers]}});
 %% The Host header is required in HTTP/1.1.
-parse_request_header(http_eoh, State=#state{http_req=#http_req{version = {1, 1}, uri=#http_uri{domain=undefined}}}) ->
-	{stop, {http_error, 400}, {error, {http_error, 500}}, State};
-%% It is however optional in HTTP/1.0.
-%% @todo Devia ser um erro, host undefined o.O
-parse_request_header(http_eoh, State=#state{transport=Transport, http_req=Req=#http_req{version={1, 0}, uri=#http_uri{domain=undefined}}}) ->
-	Port = agilitycache_http_protocol_parser:default_port(Transport:name()),
-	%% Ok, terminar aqui, e esperar envio!
-	{reply, ok, State#state{http_req=Req#http_req{uri=#http_uri{domain= <<>>, port=Port}}}};
+parse_request_header(http_eoh, State=#state{http_req=#http_req{uri=#http_uri{domain=undefined}}}) ->
+	{stop, {http_error, 400}, {error, {http_error, 400}}, State};
 parse_request_header(http_eoh, State) ->
 	%% Ok, terminar aqui, e esperar envio!
 	{reply, ok, State};
-parse_request_header({http_error, _Bin}, State) ->
+parse_request_header({http_error, Bin}, State) ->
+	lager:debug("Bin: ~p", [Bin]),
 	{stop, {http_error, 500}, {error, {http_error, 500}}, State}.
 

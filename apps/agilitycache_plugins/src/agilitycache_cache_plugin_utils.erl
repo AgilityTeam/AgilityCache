@@ -1,7 +1,25 @@
+%% This file is part of AgilityCache, a web caching proxy.
+%%
+%% Copyright (C) 2011, 2012 Joaquim Pedro França Simão
+%%
+%% AgilityCache is free software: you can redistribute it and/or modify
+%% it under the terms of the GNU Affero General Public License as published by
+%% the Free Software Foundation, either version 3 of the License, or
+%% (at your option) any later version.
+%%
+%% AgilityCache is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU Affero General Public License for more details.
+%%
+%% You should have received a copy of the GNU Affero General Public License
+%% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 -module(agilitycache_cache_plugin_utils).
 
 -export([
          parse_max_age/1,
+         max_age_estimate/1,
          param_val/2,
          param_val/3]).
 
@@ -15,6 +33,16 @@
 parse_max_age(HttpRep) ->
 	calendar:gregorian_seconds_to_datetime(max(calendar:datetime_to_gregorian_seconds(parse_cache_control(HttpRep)),
 	                                           calendar:datetime_to_gregorian_seconds(parse_expires(HttpRep)))).
+
+-spec max_age_estimate(#http_rep{}) -> calendar:datetime().
+max_age_estimate(HttpRep) ->
+	LastModified = parse_last_modified(HttpRep),		
+	Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+	LastModifiedSeconds = calendar:datetime_to_gregorian_seconds(LastModified),
+	Diff =  Now - LastModifiedSeconds,
+	Total = Now + Diff,
+	calendar:gregorian_seconds_to_datetime(Total).
+
 
 %% @todo usar s-maxage também
 -spec parse_cache_control(#http_rep{}) -> calendar:datetime().
@@ -42,6 +70,22 @@ parse_expires(HttpRep) ->
 					Date0;
 				{error, _} ->
 					lager:debug("Expires invalid: ~p", [Expires]),
+					calendar:universal_time()
+			end
+	end.
+
+-spec parse_last_modified(#http_rep{}) -> calendar:datetime().
+parse_last_modified(HttpRep) ->
+	case agilitycache_http_rep:header('Last-Modified', HttpRep) of
+		{undefined, _} ->
+			lager:debug("Last-Modified undefined"),
+			calendar:universal_time();
+		{LastModified, _} ->
+			case agilitycache_date_time:convert_request_date(LastModified) of
+				{ok, Date0} ->
+					Date0;
+				{error, _} ->
+					lager:debug("Last-Modified invalid: ~p", [LastModified]),
 					calendar:universal_time()
 			end
 	end.
