@@ -49,7 +49,7 @@
 %%--------------------------------------------------------------------
 -spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
-	gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -68,37 +68,37 @@ start_link() ->
 %%--------------------------------------------------------------------
 -spec init([]) -> {'ok',#state{listener::reference()}}.
 init([]) ->
-	start_metrics(),
-	start_tables(),
-	%% list({Handler, Opts})
-	Dispatch = [{agilitycache_proxy_handler, []}],
-	%% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
-	Ref = make_ref(),
-	ListenOpts = agilitycache_utils:get_app_env(agilitycache, listen, []),
-	BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
-	Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
-	%%lager:debug("ListenOpts ~p~n", [ListenOpts]),
-	TransOpts = [
-	             {port, proplists:get_value(port, ListenOpts, 8080)},
-	             %% We don't care if we have logs of pending connections, we'll process them anyway
-	             {backlog, proplists:get_value(backlog, ListenOpts, 128000)},
-	             {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
+    start_metrics(),
+    start_tables(),
+    %% list({Handler, Opts})
+    Dispatch = [{agilitycache_proxy_handler, []}],
+    %% Name, NbAcceptors, Transport, TransOpts, Protocol, ProtoOpts
+    Ref = make_ref(),
+    ListenOpts = agilitycache_utils:get_app_env(agilitycache, listen, []),
+    BufferSize = agilitycache_utils:get_app_env(agilitycache, buffer_size, 87380),
+    Timeout = agilitycache_utils:get_app_env(agilitycache, tcp_timeout, 5000),
+    %%lager:debug("ListenOpts ~p~n", [ListenOpts]),
+    TransOpts = [
+                 {port, proplists:get_value(port, ListenOpts, 8080)},
+                 %% We don't care if we have logs of pending connections, we'll process them anyway
+                 {backlog, proplists:get_value(backlog, ListenOpts, 128000)},
+                 {max_connections, proplists:get_value(max_connections, ListenOpts, 4096)},
                  %%{nodelay, true}, %% We want to be informed even when packages are small
-	             {reuseaddr, true},
-	             %% If we couldn't send a message in Timeout time, something is definitively wrong...
-	             {send_timeout, Timeout},
-	             %%... and therefore the connection should be closed
-	             {send_timeout_close, true},
-	             {buffer, BufferSize}
-	            ],
-	lager:debug("TransOpts~p~n", [TransOpts]),
-	NbAcceptors = proplists:get_value(acceptors, ListenOpts),
-	lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
-	{ok, _} = cowboy:start_listener(Ref, NbAcceptors,
-	                                agilitycache_tcp_transport, TransOpts,
-	                                agilitycache_http_session, [{dispatch, Dispatch}]
-	                               ),
-	{ok, #state{listener=Ref}}.
+                 {reuseaddr, true},
+                 %% If we couldn't send a message in Timeout time, something is definitively wrong...
+                 {send_timeout, Timeout},
+                 %%... and therefore the connection should be closed
+                 {send_timeout_close, true},
+                 {buffer, BufferSize}
+                ],
+    lager:debug("TransOpts~p~n", [TransOpts]),
+    NbAcceptors = proplists:get_value(acceptors, ListenOpts),
+    lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
+    {ok, _} = cowboy:start_listener(Ref, NbAcceptors,
+                                    agilitycache_tcp_transport, TransOpts,
+                                    agilitycache_http_session, [{dispatch, Dispatch}]
+                                   ),
+    {ok, #state{listener=Ref}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -116,8 +116,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 -spec handle_call(_,_,_) -> {'reply','ok',_}.
 handle_call(_Request, _From, State) ->
-	Reply = ok,
-	{reply, Reply, State}.
+    Reply = ok,
+    {reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -131,7 +131,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 -spec handle_cast(_,_) -> {'noreply',_}.
 handle_cast(_Msg, State) ->
-	{noreply, State}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -145,7 +145,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 -spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
-	{noreply, State}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -160,7 +160,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 -spec terminate(_,#state{}) -> any().
 terminate(_Reason, #state{listener=Listener}) ->
-	cowboy:stop_listener(Listener).
+    cowboy:stop_listener(Listener).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -172,7 +172,7 @@ terminate(_Reason, #state{listener=Listener}) ->
 %%--------------------------------------------------------------------
 -spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
@@ -180,16 +180,16 @@ code_change(_OldVsn, State, _Extra) ->
 
 -spec start_metrics() -> any().
 start_metrics() ->
-	folsom_sup:start_link(),
-	folsom_metrics:new_meter(requests),
-	folsom_metrics:new_histogram(resolve_time, none, infinity),
-	folsom_metrics:new_histogram(connection_time, none, infinity),
-	folsom_metrics:new_histogram(total_proxy_time, none, infinity).
+    folsom_sup:start_link(),
+    folsom_metrics:new_meter(requests),
+    folsom_metrics:new_histogram(resolve_time, none, infinity),
+    folsom_metrics:new_histogram(connection_time, none, infinity),
+    folsom_metrics:new_histogram(total_proxy_time, none, infinity).
 
 start_tables() ->
-	mnesia:start(),
-	mnesia:create_table(agilitycache_transit_file_reading, [{ram_copies, [node()]}, 
-		{attributes, record_info(fields, agilitycache_transit_file_reading)},
-		{type, bag}]),
-	mnesia:create_table(agilitycache_transit_file_downloading, [{ram_copies, [node()]}, 
-		{attributes, record_info(fields, agilitycache_transit_file_downloading)}]).
+    mnesia:start(),
+    mnesia:create_table(agilitycache_transit_file_reading, [{ram_copies, [node()]},
+                                                            {attributes, record_info(fields, agilitycache_transit_file_reading)},
+                                                            {type, bag}]),
+    mnesia:create_table(agilitycache_transit_file_downloading, [{ram_copies, [node()]},
+                                                                {attributes, record_info(fields, agilitycache_transit_file_downloading)}]).

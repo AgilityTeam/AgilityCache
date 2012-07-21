@@ -36,33 +36,33 @@
 
 -spec name() -> binary().
 name() ->
-	<<"Imgur">>.
+    <<"Imgur">>.
 
 -spec in_charge(#http_req{}) -> boolean().
 in_charge(_HttpReq = #http_req{ uri=_Uri=#http_uri{domain = <<"i.imgur.com">>, port = 80 }}) ->
-	true;
+    true;
 in_charge(_) ->
-	false.
+    false.
 
 -spec cacheable(#http_req{}) -> boolean().
 cacheable(_HttpReq) ->
-	true.
+    true.
 
 -spec cacheable(#http_req{}, #http_rep{}) -> boolean().
 cacheable(_HttpReq, _HttpRep) ->
-	true.
+    true.
 
 -spec file_id(#http_req{}) -> cache_file_id().
 file_id(_HttpReq = #http_req{ uri=_Uri=#http_uri{path = RawPath, port = Port }}) ->
-	%%"http://Plugin." + name() + "/" + request.cannonical_url;
-	Name = name(),
-	BinaryPort = list_to_binary(integer_to_list(Port)),
-	File = filename:rootname(RawPath), % remove extensão
-	%% XXX: Put raw_qs?
-	B = <<"http://Plugin.", Name/binary, ":", BinaryPort/binary, File/binary>>,
-	lager:debug("B: ~p", [B]),
-	erlang:md5(B).
+    %%"http://Plugin." + name() + "/" + request.cannonical_url;
+    Name = name(),
+    BinaryPort = list_to_binary(integer_to_list(Port)),
+    File = filename:rootname(RawPath), % remove extensão
+    %% XXX: Put raw_qs?
+    B = <<"http://Plugin.", Name/binary, ":", BinaryPort/binary, File/binary>>,
+    lager:debug("B: ~p", [B]),
+    erlang:md5(B).
 
 -spec expires(#http_req{}, #http_rep{}) -> calendar:datetime().
 expires(_HttpReq, HttpRep) ->
-	agilitycache_cache_plugin_utils:parse_max_age(HttpRep).
+    agilitycache_cache_plugin_utils:parse_max_age(HttpRep).

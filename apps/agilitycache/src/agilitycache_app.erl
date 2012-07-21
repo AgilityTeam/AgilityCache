@@ -30,40 +30,40 @@
 
 -spec start() -> 'ok' | {'error',_}.
 start() ->
-	start(agilitycache).
+    start(agilitycache).
 
 -spec start(atom()) -> 'ok' | {'error',_}.
 start(App) ->
-	case application:start(App) of
-		{error, {not_started, Dep}} ->
-			start(Dep),
-			start(App);
-		Other ->
-			Other
-	end.
+    case application:start(App) of
+        {error, {not_started, Dep}} ->
+            start(Dep),
+            start(App);
+        Other ->
+            Other
+    end.
 
 -spec start(_,_) -> {'error',_} | {'ok',pid()} | {'ok',pid(),_}.
 start(_StartType, _StartArgs) ->
-	agilitycache_sup:start_link().
+    agilitycache_sup:start_link().
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->
-	ok.
+    ok.
 
 -spec instrumentation() -> [{_,_}].
 instrumentation() ->
-	[{X, instrumentation(X)} || X <- folsom_metrics:get_metrics()].
+    [{X, instrumentation(X)} || X <- folsom_metrics:get_metrics()].
 
 -spec instrumentation(_) -> any().
 instrumentation(Metric) ->
-	case folsom_metrics:get_metric_info(Metric) of
-		[{Metric, Info}] ->
-			case proplists:get_value(type, Info) of
-				histogram ->
-					folsom_metrics:get_histogram_statistics(Metric);
-				_ ->
-					folsom_metrics:get_metric_value(Metric)
-			end;
-		Error ->
-			Error
-	end.
+    case folsom_metrics:get_metric_info(Metric) of
+        [{Metric, Info}] ->
+            case proplists:get_value(type, Info) of
+                histogram ->
+                    folsom_metrics:get_histogram_statistics(Metric);
+                _ ->
+                    folsom_metrics:get_metric_value(Metric)
+            end;
+        Error ->
+            Error
+    end.

@@ -19,15 +19,15 @@
 -include("http.hrl").
 
 -export([
-	 version_to_connection/1,
-   response_connection/2,
-   response_connection_parse/1,
-	 atom_to_connection/1,
-	 default_port/1,
-	 format_header/1,
-	 status/1,
-	 header_to_binary/1,
-	 method_to_binary/1]).
+         version_to_connection/1,
+         response_connection/2,
+         response_connection_parse/1,
+         atom_to_connection/1,
+         default_port/1,
+         format_header/1,
+         status/1,
+         header_to_binary/1,
+         method_to_binary/1]).
 %% Internal.
 
 -spec version_to_connection(http_version()) -> keepalive | close.
@@ -36,30 +36,30 @@ version_to_connection({1, 1}) -> keepalive;
 version_to_connection(_Any) -> close.
 
 -spec response_connection(http_headers(), keepalive | close)
-  -> keepalive | close.
+                         -> keepalive | close.
 
 response_connection([], Connection) ->
-  Connection;
+    Connection;
 response_connection([{Name, Value}|Tail], Connection) ->
-  case Name of
-    'Connection' -> response_connection_parse(Value);
-    Name when is_atom(Name) -> response_connection(Tail, Connection);
-    Name ->
-      Name2 = cowboy_bstr:to_lower(Name),
-      case Name2 of
-        <<"connection">> -> response_connection_parse(Value);
-        _Any -> response_connection(Tail, Connection)
-      end
-  end.
+    case Name of
+        'Connection' -> response_connection_parse(Value);
+        Name when is_atom(Name) -> response_connection(Tail, Connection);
+        Name ->
+            Name2 = cowboy_bstr:to_lower(Name),
+            case Name2 of
+                <<"connection">> -> response_connection_parse(Value);
+                _Any -> response_connection(Tail, Connection)
+            end
+    end.
 
 -spec response_connection_parse(binary()) -> keepalive | close.
 
 response_connection_parse(ReplyConn) ->
-  Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
-  cowboy_http:connection_to_atom(Tokens).
+    Tokens = cowboy_http:nonempty_list(ReplyConn, fun cowboy_http:token/2),
+    cowboy_http:connection_to_atom(Tokens).
 
 -spec atom_to_connection(keepalive) -> <<_:80>>;
-			(close) -> <<_:40>>.
+                        (close) -> <<_:40>>.
 
 atom_to_connection(keepalive) ->
     <<"keep-alive">>;
@@ -227,15 +227,15 @@ method_to_binary(B) when is_binary(B) -> B.
 format_header_test_() ->
     %% {Header, Result}
     Tests = [
-	     {<<"Sec-Websocket-Version">>, <<"Sec-Websocket-Version">>},
-	     {<<"Sec-WebSocket-Version">>, <<"Sec-Websocket-Version">>},
-	     {<<"sec-websocket-version">>, <<"Sec-Websocket-Version">>},
-	     {<<"SEC-WEBSOCKET-VERSION">>, <<"Sec-Websocket-Version">>},
-	     %% These last tests ensures we're formatting headers exactly like OTP.
-	     %% Even though it's dumb, it's better for compatibility reasons.
-	     {<<"Sec-WebSocket--Version">>, <<"Sec-Websocket--version">>},
-	     {<<"Sec-WebSocket---Version">>, <<"Sec-Websocket---Version">>}
-	    ],
+             {<<"Sec-Websocket-Version">>, <<"Sec-Websocket-Version">>},
+             {<<"Sec-WebSocket-Version">>, <<"Sec-Websocket-Version">>},
+             {<<"sec-websocket-version">>, <<"Sec-Websocket-Version">>},
+             {<<"SEC-WEBSOCKET-VERSION">>, <<"Sec-Websocket-Version">>},
+             %% These last tests ensures we're formatting headers exactly like OTP.
+             %% Even though it's dumb, it's better for compatibility reasons.
+             {<<"Sec-WebSocket--Version">>, <<"Sec-Websocket--version">>},
+             {<<"Sec-WebSocket---Version">>, <<"Sec-Websocket---Version">>}
+            ],
     [{H, fun() -> R = format_header(H) end} || {H, R} <- Tests].
 
 -endif.

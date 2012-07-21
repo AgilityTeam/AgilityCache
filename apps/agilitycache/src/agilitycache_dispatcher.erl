@@ -31,27 +31,27 @@
 %% API.
 -spec split_host_port(binary()) -> {iodata(), undefined | inet:port_number()}.
 split_host_port(<<>>) ->
-	{<<>>, undefined};
+    {<<>>, undefined};
 split_host_port(Host) ->
-	case binary:split(Host, <<":">>) of
-		[Host] ->
-			{Host, undefined};
-		[Host2, Port] ->
-			{Host2, list_to_integer(binary_to_list(Port))}
-	end.
+    case binary:split(Host, <<":">>) of
+        [Host] ->
+            {Host, undefined};
+        [Host2, Port] ->
+            {Host2, list_to_integer(binary_to_list(Port))}
+    end.
 
 %% @doc Split a hostname into a list of tokens.
 -spec split_host(binary())
-		-> {[binary()], binary(), undefined | inet:port_number()}.
+                -> {[binary()], binary(), undefined | inet:port_number()}.
 split_host(<<>>) ->
     {[], <<>>, undefined};
 split_host(Host) ->
     case binary:split(Host, <<":">>) of
-	[Host] ->
-	    {binary:split(Host, <<".">>, [global, trim]), Host, undefined};
-	[Host2, Port] ->
-	    {binary:split(Host2, <<".">>, [global, trim]), Host2,
-	     list_to_integer(binary_to_list(Port))}
+        [Host] ->
+            {binary:split(Host, <<".">>, [global, trim]), Host, undefined};
+        [Host2, Port] ->
+            {binary:split(Host2, <<".">>, [global, trim]), Host2,
+             list_to_integer(binary_to_list(Port))}
     end.
 
 %% @doc Split a path into a list of tokens.
@@ -86,21 +86,21 @@ split_path(Path) ->
 %% When a result is found, this function will return the handler module and
 %% options found in the dispatch list.
 -spec match(#http_req{}, dispatch_rules())
-	   -> {ok, module(), any()} | {error, notfound}.
+           -> {ok, module(), any()} | {error, notfound}.
 match(_Req, []) ->
     {error, notfound};
 match(Req, [{Handler, Opts}|Tail]) ->
     case try_match(Handler, Opts, Req) of
-	false ->
-	    match(Req, Tail);
-	true ->
-	    {ok, Handler, Opts}
+        false ->
+            match(Req, Tail);
+        true ->
+            {ok, Handler, Opts}
     end.
 
 %% Internal.
 
 -spec try_match(module(), any(), #http_req{})
-	       -> true | false.
+               -> true | false.
 try_match(Handler, Opts, Req) ->
     Handler:match(Req, Opts).
 
@@ -112,61 +112,61 @@ try_match(Handler, Opts, Req) ->
 split_host_test_() ->
     %% {Host, Result}
     Tests = [
-	     {<<"">>, {[], <<"">>, undefined}},
-	     {<<".........">>, {[], <<".........">>, undefined}},
-	     {<<"*">>, {[<<"*">>], <<"*">>, undefined}},
-	     {<<"cowboy.dev-extend.eu">>,
-	      {[<<"cowboy">>, <<"dev-extend">>, <<"eu">>],
-	       <<"cowboy.dev-extend.eu">>, undefined}},
-	     {<<"dev-extend..eu">>,
-	      {[<<"dev-extend">>, <<>>, <<"eu">>],
-	       <<"dev-extend..eu">>, undefined}},
-	     {<<"dev-extend.eu">>,
-	      {[<<"dev-extend">>, <<"eu">>], <<"dev-extend.eu">>, undefined}},
-	     {<<"dev-extend.eu:8080">>,
-	      {[<<"dev-extend">>, <<"eu">>], <<"dev-extend.eu">>, 8080}},
-	     {<<"a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z">>,
-	      {[<<"a">>, <<"b">>, <<"c">>, <<"d">>, <<"e">>, <<"f">>, <<"g">>,
-		<<"h">>, <<"i">>, <<"j">>, <<"k">>, <<"l">>, <<"m">>, <<"n">>,
-		<<"o">>, <<"p">>, <<"q">>, <<"r">>, <<"s">>, <<"t">>, <<"u">>,
-		<<"v">>, <<"w">>, <<"x">>, <<"y">>, <<"z">>],
-	       <<"a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z">>,
-	       undefined}}
-	    ],
+             {<<"">>, {[], <<"">>, undefined}},
+             {<<".........">>, {[], <<".........">>, undefined}},
+             {<<"*">>, {[<<"*">>], <<"*">>, undefined}},
+             {<<"cowboy.dev-extend.eu">>,
+              {[<<"cowboy">>, <<"dev-extend">>, <<"eu">>],
+               <<"cowboy.dev-extend.eu">>, undefined}},
+             {<<"dev-extend..eu">>,
+              {[<<"dev-extend">>, <<>>, <<"eu">>],
+               <<"dev-extend..eu">>, undefined}},
+             {<<"dev-extend.eu">>,
+              {[<<"dev-extend">>, <<"eu">>], <<"dev-extend.eu">>, undefined}},
+             {<<"dev-extend.eu:8080">>,
+              {[<<"dev-extend">>, <<"eu">>], <<"dev-extend.eu">>, 8080}},
+             {<<"a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z">>,
+              {[<<"a">>, <<"b">>, <<"c">>, <<"d">>, <<"e">>, <<"f">>, <<"g">>,
+                <<"h">>, <<"i">>, <<"j">>, <<"k">>, <<"l">>, <<"m">>, <<"n">>,
+                <<"o">>, <<"p">>, <<"q">>, <<"r">>, <<"s">>, <<"t">>, <<"u">>,
+                <<"v">>, <<"w">>, <<"x">>, <<"y">>, <<"z">>],
+               <<"a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z">>,
+               undefined}}
+            ],
     [{H, fun() -> R = split_host(H) end} || {H, R} <- Tests].
 
 split_host_fail_test_() ->
     Tests = [
-	     <<"dev-extend.eu:owns">>,
-	     <<"dev-extend.eu: owns">>,
-	     <<"dev-extend.eu:42fun">>,
-	     <<"dev-extend.eu: 42fun">>,
-	     <<"dev-extend.eu:42 fun">>,
-	     <<"dev-extend.eu:fun 42">>,
-	     <<"dev-extend.eu: 42">>,
-	     <<":owns">>,
-	     <<":42 fun">>
-	    ],
+             <<"dev-extend.eu:owns">>,
+             <<"dev-extend.eu: owns">>,
+             <<"dev-extend.eu:42fun">>,
+             <<"dev-extend.eu: 42fun">>,
+             <<"dev-extend.eu:42 fun">>,
+             <<"dev-extend.eu:fun 42">>,
+             <<"dev-extend.eu: 42">>,
+             <<":owns">>,
+             <<":42 fun">>
+            ],
     [{H, fun() -> case catch split_host(H) of
-		      {'EXIT', _Reason} -> ok
-		  end end} || H <- Tests].
+                      {'EXIT', _Reason} -> ok
+                  end end} || H <- Tests].
 
 split_path_test_() ->
     %% {Path, Result, QueryString}
     Tests = [
-	     {<<"?">>, [], <<"">>, <<"">>},
-	     {<<"???">>, [], <<"">>, <<"??">>},
-	     {<<"/">>, [], <<"/">>, <<"">>},
-	     {<<"/users">>, [<<"users">>], <<"/users">>, <<"">>},
-	     {<<"/users?">>, [<<"users">>], <<"/users">>, <<"">>},
-	     {<<"/users?a">>, [<<"users">>], <<"/users">>, <<"a">>},
-	     {<<"/users/42/friends?a=b&c=d&e=notsure?whatever">>,
-	      [<<"users">>, <<"42">>, <<"friends">>],
-	      <<"/users/42/friends">>, <<"a=b&c=d&e=notsure?whatever">>},
-	     {<<"/users/a+b/c%21d?e+f=g+h">>,
-	      [<<"users">>, <<"a b">>, <<"c!d">>],
-	      <<"/users/a+b/c%21d">>, <<"e+f=g+h">>}
-	    ],
+             {<<"?">>, [], <<"">>, <<"">>},
+             {<<"???">>, [], <<"">>, <<"??">>},
+             {<<"/">>, [], <<"/">>, <<"">>},
+             {<<"/users">>, [<<"users">>], <<"/users">>, <<"">>},
+             {<<"/users?">>, [<<"users">>], <<"/users">>, <<"">>},
+             {<<"/users?a">>, [<<"users">>], <<"/users">>, <<"a">>},
+             {<<"/users/42/friends?a=b&c=d&e=notsure?whatever">>,
+              [<<"users">>, <<"42">>, <<"friends">>],
+              <<"/users/42/friends">>, <<"a=b&c=d&e=notsure?whatever">>},
+             {<<"/users/a+b/c%21d?e+f=g+h">>,
+              [<<"users">>, <<"a b">>, <<"c!d">>],
+              <<"/users/a+b/c%21d">>, <<"e+f=g+h">>}
+            ],
     [{P, fun() -> {R, RawP, Qs} = split_path(P) end}
      || {P, R, RawP, Qs} <- Tests].
 

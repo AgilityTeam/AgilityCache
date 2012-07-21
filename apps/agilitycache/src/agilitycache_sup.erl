@@ -44,4 +44,3 @@ start_link() ->
 -spec init([]) -> {'ok',{{'one_for_one',5,10},[{_,_,_,_,_,_},...]}}.
 init([]) ->
     {ok, { {one_for_one, 5, 10}, [?CHILD(agilitycache_srv, worker)]} }.
-

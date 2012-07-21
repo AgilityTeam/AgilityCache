@@ -24,16 +24,16 @@
 -module(agilitycache_http_rep).
 
 -export([
-	 status/1, version/1, string/1,
-	 peer/1,
-	 header/2, header/3, headers/1,
-	 content_length/1
-	]). %% Request API.
+         status/1, version/1, string/1,
+         peer/1,
+         header/2, header/3, headers/1,
+         content_length/1
+        ]). %% Request API.
 
 -export([
-	 response_head/1,
-	 response_head/4
-	]). %% Misc API.
+         response_head/1,
+         response_head/4
+        ]). %% Misc API.
 
 -include("http.hrl").
 
@@ -65,49 +65,49 @@ peer(Rep = #http_rep { peer = Peer} ) ->
 -spec headers(#http_rep{}) -> {http_headers(), #http_rep{}}.
 
 headers(#http_rep{ headers = Headers} = Req) ->
-	{Headers, Req}.
+    {Headers, Req}.
 
 -spec content_length(#http_rep{}) ->
-		                    {undefined | non_neg_integer(), #http_rep{}}.
+                            {undefined | non_neg_integer(), #http_rep{}}.
 
 content_length(#http_rep{content_length=undefined} = Req) ->
-	{Length, Req1} = case header('Content-Length', Req) of
-		                 {undefined, Req_2} ->
-			                 {invalid, Req_2};
-		                 {L1, Req_1}->
-			                 %% Talvez iolist_to_binary seja desnecessário,
-			                 %% mas é bom para manter certinho o input com iolist/iodata
-			                 {cowboy_http:digits(iolist_to_binary(L1)), Req_1}
-	                 end,
-	case Length of
-		invalid ->
-			{undefined, Req1#http_rep{content_length=invalid}};
-		_ ->
-			{Length, Req1#http_rep{content_length=Length}}
-	end;
+    {Length, Req1} = case header('Content-Length', Req) of
+                         {undefined, Req_2} ->
+                             {invalid, Req_2};
+                         {L1, Req_1}->
+                             %% Talvez iolist_to_binary seja desnecessário,
+                             %% mas é bom para manter certinho o input com iolist/iodata
+                             {cowboy_http:digits(iolist_to_binary(L1)), Req_1}
+                     end,
+    case Length of
+        invalid ->
+            {undefined, Req1#http_rep{content_length=invalid}};
+        _ ->
+            {Length, Req1#http_rep{content_length=Length}}
+    end;
 %% estado invalid = Content-Length: -1,
 %% serve para não ficar escaneando toda hora
 content_length(#http_rep{content_length=invalid} = Req) ->
-	{undefined, Req};
+    {undefined, Req};
 content_length(#http_rep{content_length=ContentLength} = Req) ->
-	{ContentLength, Req}.
+    {ContentLength, Req}.
 
 %% @equiv header(Name, Req, undefined)
 -spec header(http_header(), #http_rep{})
             -> {iodata() | undefined, #http_rep{}}.
 
 header(Name, Req) when is_atom(Name) orelse is_binary(Name) ->
-	header(Name, Req, undefined).
+    header(Name, Req, undefined).
 
 %% @doc Return the header value for the given key, or a default if missing.
 -spec header(http_header(), #http_rep{}, Default)
             -> {iodata() | Default, #http_rep{}} when Default::any().
 
 header(Name, #http_rep{ headers = Headers} = Req, Default) when is_atom(Name) orelse is_binary(Name) ->
-	case lists:keyfind(Name, 1, Headers) of
-		{Name, Value} -> {Value, Req};
-		false -> {Default, Req}
-	end.
+    case lists:keyfind(Name, 1, Headers) of
+        {Name, Value} -> {Value, Req};
+        false -> {Default, Req}
+    end.
 
 -spec response_head(http_version(), http_status(), http_headers(), http_headers()) -> iolist().
 
@@ -120,7 +120,7 @@ response_head({VMajor, VMinor}, Status, Headers, DefaultHeaders) ->
     Headers4 = Headers2 ++ DefaultHeaders,
     lager:debug("Headers4: ~p", [Headers4]),
     Headers5 = [<< Key/binary, ": ", Value/binary, "\r\n" >>
-		    || {Key, Value} <- Headers4],
+                    || {Key, Value} <- Headers4],
     [StatusLine, Headers5, <<"\r\n">>].
 -spec response_head(#http_rep{}) -> iolist().
 

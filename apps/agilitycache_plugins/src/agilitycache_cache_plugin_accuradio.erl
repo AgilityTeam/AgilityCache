@@ -36,36 +36,36 @@
 
 -spec name() -> binary().
 name() ->
-	<<"AccuRadio">>.
+    <<"AccuRadio">>.
 
 -spec in_charge(#http_req{}) -> boolean().
 in_charge(_HttpReq = #http_req{ uri=_Uri=#http_uri{domain = <<"3393.voxcdn.com">>, port = 80, path=Path }}) ->
-	case binary:match(Path, [<<".m4a">>]) of
-		nomatch -> false;
-		_ -> true
-	end;
+    case binary:match(Path, [<<".m4a">>]) of
+        nomatch -> false;
+        _ -> true
+    end;
 in_charge(_) ->
-	false.
+    false.
 
 -spec cacheable(#http_req{}) -> boolean().
 cacheable(_HttpReq) ->
-	true.
+    true.
 
 -spec cacheable(#http_req{}, #http_rep{}) -> boolean().
 cacheable(_HttpReq, _HttpRep = #http_rep{status=200}) ->
-	true;
+    true;
 cacheable(_, _) ->
-	false.
+    false.
 
 -spec file_id(#http_req{}) -> cache_file_id().
 file_id(_HttpReq = #http_req{ uri=_Uri=#http_uri{path = Path}}) ->
-	Name = name(),
-	B = <<"http://Plugin.", Name/binary, Path/binary>>,
-	lager:debug("B: ~p", [B]),
-	erlang:md5(B).
+    Name = name(),
+    B = <<"http://Plugin.", Name/binary, Path/binary>>,
+    lager:debug("B: ~p", [B]),
+    erlang:md5(B).
 
 -spec expires(#http_req{}, #http_rep{}) -> calendar:datetime().
 expires(_HttpReq, HttpRep) ->
-	%% VoxCdn doesn't send expires...
-	%% we estimate based on last-modified
-	agilitycache_cache_plugin_utils:max_age_estimate(HttpRep).
+    %% VoxCdn doesn't send expires...
+    %% we estimate based on last-modified
+    agilitycache_cache_plugin_utils:max_age_estimate(HttpRep).

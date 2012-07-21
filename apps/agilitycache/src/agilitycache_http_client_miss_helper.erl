@@ -37,23 +37,23 @@
          close/1]).
 
 -record(state, {
-      file_id = <<>> :: binary(),
-      file_path = <<>> :: binary(),
-      file_handle = undefined :: file:io_device() | undefined
-      }).
+          file_id = <<>> :: binary(),
+          file_path = <<>> :: binary(),
+          file_handle = undefined :: file:io_device() | undefined
+         }).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 -spec open(_,atom() | pid() | {atom(),_} | {'via',_,_}) -> 'ok'.
 open(FileId, Pid) ->
-  gen_server:cast(Pid, {open, FileId}).
+    gen_server:cast(Pid, {open, FileId}).
 -spec write(_,atom() | pid() | {atom(),_} | {'via',_,_}) -> 'ok'.
 write(Data, Pid) ->
-  gen_server:cast(Pid, {write, Data}).
+    gen_server:cast(Pid, {write, Data}).
 -spec close(atom() | pid() | {atom(),_} | {'via',_,_}) -> 'ok'.
 close(Pid) ->
-  gen_server:cast(Pid, close).
+    gen_server:cast(Pid, close).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -64,11 +64,11 @@ close(Pid) ->
 %%--------------------------------------------------------------------
 -spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
-        gen_server:start_link(?SERVER, [], []).
+    gen_server:start_link(?SERVER, [], []).
 
 -spec start() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start() ->
-  gen_server:start(?SERVER, [], []).
+    gen_server:start(?SERVER, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -87,7 +87,7 @@ start() ->
 %%--------------------------------------------------------------------
 -spec init(_) -> {ok, #state{}}.
 init([]) ->
-        {ok, #state{}}.
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -105,8 +105,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 -spec handle_call(_,_,_) -> {'reply','ok',_}.
 handle_call(_Request, _From, State) ->
-        Reply = ok,
-        {reply, Reply, State}.
+    Reply = ok,
+    {reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -120,36 +120,36 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 -spec handle_cast(_,_) -> {'noreply',_} | {'stop',{'error',atom()},#state{}}.
 handle_cast({open, FileId}, State) ->
-  try
-    {ok, Path} = agilitycache_cache_dir:get_best_filepath(FileId),
-    filelib:ensure_dir(Path),
-    {ok, FileHandle} = file:open(<<Path/binary, ".tmp" >>, [raw, write, delayed_write, binary]),
-    {ok, Path, FileHandle}
-  of
-    {ok, Path0, FileHandle0} ->
-      lager:debug("Path: ~p", [Path0]),
-      lager:debug("FileHandle: ~p", [FileHandle0]),
-      {noreply, State#state{file_handle=FileHandle0, file_path=Path0}}
-  catch
+    try
+        {ok, Path} = agilitycache_cache_dir:get_best_filepath(FileId),
+        filelib:ensure_dir(Path),
+        {ok, FileHandle} = file:open(<<Path/binary, ".tmp" >>, [raw, write, delayed_write, binary]),
+        {ok, Path, FileHandle}
+    of
+        {ok, Path0, FileHandle0} ->
+            lager:debug("Path: ~p", [Path0]),
+            lager:debug("FileHandle: ~p", [FileHandle0]),
+            {noreply, State#state{file_handle=FileHandle0, file_path=Path0}}
+    catch
         error:Reason ->
-          {stop, {error, Reason}, State#state{file_handle=undefined}}
-  end;
+            {stop, {error, Reason}, State#state{file_handle=undefined}}
+    end;
 handle_cast({write, _}, State = #state{file_handle=undefined}) ->
-  {stop, {error, notopen}, State};
+    {stop, {error, notopen}, State};
 handle_cast({write, Data}, State = #state{file_handle=FileHandle}) ->
-  case file:write(FileHandle, Data) of
-    ok ->
-      {noreply, State};
-    {error, _} = Z ->
-      {stop, Z, State}
-  end;
+    case file:write(FileHandle, Data) of
+        ok ->
+            {noreply, State};
+        {error, _} = Z ->
+            {stop, Z, State}
+    end;
 handle_cast(close, State = #state{file_path=FileName}) ->
-  close_file(State),
-  file:rename(<<FileName/binary, ".tmp">>, FileName),
-  {stop, normal, State#state{file_handle=undefined}};
+    close_file(State),
+    file:rename(<<FileName/binary, ".tmp">>, FileName),
+    {stop, normal, State#state{file_handle=undefined}};
 
 handle_cast(_Msg, State) ->
-        {noreply, State}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -163,7 +163,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 -spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
-        {noreply, State}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -178,9 +178,9 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 -spec terminate(_,#state{}) -> 'ok'.
 terminate(Reason, State) ->
-  close_file(State),
-  lager:debug("Reason: ~p", [Reason]),
-  ok.
+    close_file(State),
+    lager:debug("Reason: ~p", [Reason]),
+    ok.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -192,17 +192,17 @@ terminate(Reason, State) ->
 %%--------------------------------------------------------------------
 -spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 -spec close_file(#state{}) -> 'ok'.
 close_file(#state{file_handle=undefined}) ->
-  ok;
+    ok;
 close_file(#state{file_handle=FileHandle}) ->
-  lager:debug("Fechando: ~p", [FileHandle]),
-  %% Faz duaz vezes para evitar erro de delayed write
-  file:close(FileHandle),
-  file:close(FileHandle),
-  ok.
+    lager:debug("Fechando: ~p", [FileHandle]),
+    %% Faz duaz vezes para evitar erro de delayed write
+    file:close(FileHandle),
+    file:close(FileHandle),
+    ok.

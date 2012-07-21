@@ -37,7 +37,7 @@
 -module(agilitycache_tcp_transport).
 
 -export([name/0, messages/0, listen/1, accept/2, recv/3, send/2, setopts/2,
-	 controlling_process/2, peername/1, close/1, connect/3, connect/4]).
+         controlling_process/2, peername/1, close/1, connect/3, connect/4]).
 
 %% @doc Name of this transport API, <em>tcp</em>.
 -spec name() -> tcp.
@@ -65,24 +65,24 @@ messages() -> {tcp, tcp_closed, tcp_error}.
 %%
 %% @see gen_tcp:listen/2
 -spec listen([{port, inet:port_number()} | {ip, inet:ip_address()}])
-	    -> {ok, inet:socket()} | {error, atom()}.
+            -> {ok, inet:socket()} | {error, atom()}.
 
 listen(Opts) ->
     {port, Port} = lists:keyfind(port, 1, Opts),
     Backlog = proplists:get_value(backlog, Opts, 1024),
     ListenOpts0 = [binary, {active, false},
-		   {backlog, Backlog}, {packet, raw}, {reuseaddr, true}],
+                   {backlog, Backlog}, {packet, raw}, {reuseaddr, true}],
     ListenOpts =
-	case lists:keyfind(ip, 1, Opts) of
-	    false -> ListenOpts0;
-	    Ip -> [Ip|ListenOpts0]
-	end,
+        case lists:keyfind(ip, 1, Opts) of
+            false -> ListenOpts0;
+            Ip -> [Ip|ListenOpts0]
+        end,
     gen_tcp:listen(Port, ListenOpts).
 
 %% @doc Accept an incoming connection on a listen socket.
 %% @see gen_tcp:accept/2
 -spec accept(inet:socket(), timeout())
-	    -> {ok, inet:socket()} | {error, closed | timeout | atom()}.
+            -> {ok, inet:socket()} | {error, closed | timeout | atom()}.
 
 accept(LSocket, Timeout) ->
     gen_tcp:accept(LSocket, Timeout).
@@ -90,7 +90,7 @@ accept(LSocket, Timeout) ->
 %% @doc Receive a packet from a socket in passive mode.
 %% @see gen_tcp:recv/3
 -spec recv(inet:socket(), non_neg_integer(), timeout())
-	  -> {ok, any()} | {error, closed | atom()}.
+          -> {ok, any()} | {error, closed | atom()}.
 
 recv(Socket, Length, Timeout) ->
     gen_tcp:recv(Socket, Length, Timeout).
@@ -112,7 +112,7 @@ setopts(Socket, Opts) ->
 %% @doc Assign a new controlling process <em>Pid</em> to <em>Socket</em>.
 %% @see gen_tcp:controlling_process/2
 -spec controlling_process(inet:socket(), pid())
-			 -> ok | {error, closed | not_owner | atom()}.
+                         -> ok | {error, closed | not_owner | atom()}.
 
 controlling_process(Socket, Pid) ->
     gen_tcp:controlling_process(Socket, Pid).
@@ -120,7 +120,7 @@ controlling_process(Socket, Pid) ->
 %% @doc Return the address and port for the other end of a connection.
 %% @see inet:peername/1
 -spec peername(inet:socket())
-	      -> {ok, {inet:ip_address(), inet:port_number()}} | {error, atom()}.
+              -> {ok, {inet:ip_address(), inet:port_number()}} | {error, atom()}.
 
 peername(Socket) ->
     inet:peername(Socket).
@@ -135,33 +135,33 @@ close(Socket) ->
 %% @doc Connect to a server
 %% @see gen_tcp:connect/3,4
 -spec connect(inet:ip_address(), inet:port_number(), any(), timeout())
-	     -> {ok, inet:socket()} | {error, atom()}.
+             -> {ok, inet:socket()} | {error, atom()}.
 
 connect(RemoteIp, RemotePort, Opts, Timeout) ->
-	%% Hack do timeout: tentar conectar com um timeout para cada ip
-	%% não sei se compensa... mas é melhor, pois testa todos os ips...
-	%% @todo: Criar um cache DNS, e só inserir as entradas que conectarem com sucesso
-	case folsom_metrics:histogram_timed_update(resolve_time,
-	                                          inet_tcp,
-	                                          getaddrs,
-	                                          [RemoteIp, Timeout]) of
-		{ok, IPs} ->
-			ConnectOpts = [binary, {active, false}, {packet, raw} | Opts],
-			try_connect(IPs, RemotePort, ConnectOpts, Timeout, {error, einval});
-		Error ->
-			Error
-	end.
+    %% Hack do timeout: tentar conectar com um timeout para cada ip
+    %% não sei se compensa... mas é melhor, pois testa todos os ips...
+    %% @todo: Criar um cache DNS, e só inserir as entradas que conectarem com sucesso
+    case folsom_metrics:histogram_timed_update(resolve_time,
+                                               inet_tcp,
+                                               getaddrs,
+                                               [RemoteIp, Timeout]) of
+        {ok, IPs} ->
+            ConnectOpts = [binary, {active, false}, {packet, raw} | Opts],
+            try_connect(IPs, RemotePort, ConnectOpts, Timeout, {error, einval});
+        Error ->
+            Error
+    end.
 
 -spec try_connect(maybe_improper_list(),_,nonempty_maybe_improper_list(),_,{'error',atom()}) -> {'error',atom()} | {'ok',port()}.
 try_connect([IP|IPs], RemotePort, Opts, Timeout, _) ->
-	case gen_tcp:connect(IP, RemotePort, Opts, Timeout) of
-		{ok,S} ->
-			{ok,S};
-		Err1 ->
-			try_connect(IPs, RemotePort, Opts, Timeout, Err1)
-	end;
+    case gen_tcp:connect(IP, RemotePort, Opts, Timeout) of
+        {ok,S} ->
+            {ok,S};
+        Err1 ->
+            try_connect(IPs, RemotePort, Opts, Timeout, Err1)
+    end;
 try_connect([], _Port, _Opts, _Timer, Err) ->
-	Err.
+    Err.
 
 -spec connect(inet:ip_address(), inet:port_number(), any()) -> {ok, inet:socket()} | {error, atom()}.
 
