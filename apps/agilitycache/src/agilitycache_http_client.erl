@@ -144,10 +144,12 @@ handle_info(_Info, State) ->
 
 terminate(Reason, #state{cache_status=CacheStatus, cache_id=FileId} = State) ->
     lager:debug("terminate Reason: ~p", [Reason]),
-    lager:debug("Removendo índice do db: ~p", [FileId]),
     case CacheStatus of
-        miss -> mnesia:transaction(fun() -> mnesia:delete({agilitycache_transit_file_downloading, FileId}), ok end);
+        miss ->
+            lager:debug("Removendo índice do db: ~p", [FileId]),
+            mnesia:transaction(fun() -> mnesia:delete({agilitycache_transit_file_downloading, FileId}), ok end);
         hit ->
+            lager:debug("Removendo índice do db: ~p", [FileId]),
             MyPid = self(),
             mnesia:transaction(fun() -> mnesia:delete_object(#agilitycache_transit_file_reading{id=FileId, process=MyPid}), ok end);
         _ -> ok
@@ -212,7 +214,7 @@ handle_get_body(State=#state{cache_status = hit, cache_file_handle=FileHandle}) 
 
 %% Empty buffer
 handle_get_body(State=#state{
-                  client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>, cache_status=miss, cache_file_helper=FileHelper})->
+                         client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>, cache_status=miss, cache_file_helper=FileHelper})->
     {ok, Data} = Transport:recv(Socket, 0, T),
     agilitycache_http_client_miss_helper:write(Data, FileHelper),
     {reply, Data, State};
@@ -225,7 +227,7 @@ handle_get_body(State=#state{client_buffer=Buffer, cache_status=miss, cache_file
 
 %% Empty buffer
 handle_get_body(State=#state{
-                  client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>})->
+                         client_socket=Socket, transport=Transport, timeout=T, client_buffer= <<>>})->
     {ok, Data} = Transport:recv(Socket, 0, T),
     {reply, Data, State};
 %% Non empty buffer
