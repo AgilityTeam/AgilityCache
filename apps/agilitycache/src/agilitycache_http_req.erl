@@ -103,18 +103,18 @@ connection(#http_req{ connection = Connection} = Req) ->
 content_length(#http_req{content_length=undefined} = Req) ->
     {Length, Req1} = case header('Content-Length', Req) of
                          {L1, Req_1} when is_binary(L1) ->
-                                                % Talvez iolist_to_binary seja desnecessário, mas é bom para manter certinho o input com iolist/iodata
-                             {list_to_integer(
-                                binary_to_list(
-                                  iolist_to_binary(L1))), Req_1};
+                             %% Talvez iolist_to_binary seja desnecessário, mas é bom para manter certinho o input com iolist/iodata
+                             {(catch httpd_conf:make_integer(
+                                       binary_to_list(
+                                         iolist_to_binary(L1)))), Req_1};
                          {_, Req_2} ->
                              {invalid, Req_2}
                      end,
     case Length of
-        invalid ->
-            {undefined, Req1#http_req{content_length=invalid}};
+        {ok, L} when is_integer(L)->
+            {L, Req1#http_req{content_length=L}};
         _ ->
-            {Length, Req1#http_req{content_length=Length}}
+            {undefined, Req1#http_req{content_length=invalid}}
     end;
 %% estado invalid = Content-Length: -1,
 %% serve para não ficar escaneando toda hora
