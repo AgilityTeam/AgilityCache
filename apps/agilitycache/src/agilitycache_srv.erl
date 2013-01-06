@@ -94,8 +94,8 @@ init([]) ->
     lager:debug("TransOpts~p~n", [TransOpts]),
     NbAcceptors = proplists:get_value(acceptors, ListenOpts),
     lager:debug("NbAcceptors: ~p~n", [NbAcceptors]),
-    {ok, _} = cowboy:start_listener(Ref, NbAcceptors,
-                                    agilitycache_tcp_transport, TransOpts,
+    {ok, _} = ranch:start_listener(Ref, NbAcceptors,
+                                    ranch_tcp, TransOpts,
                                     agilitycache_http_session, [{dispatch, Dispatch}]
                                    ),
     {ok, #state{listener=Ref}}.
@@ -160,7 +160,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 -spec terminate(_,#state{}) -> any().
 terminate(_Reason, #state{listener=Listener}) ->
-    cowboy:stop_listener(Listener).
+    ranch:stop_listener(Listener).
 
 %%--------------------------------------------------------------------
 %% @private
