@@ -189,7 +189,7 @@ start_parse_request(State=#state{server_buffer=Buffer}) ->
     end.
 
 parse_request({http_request, Method, {abs_path, AbsPath}, Version}, State = #state{server_socket = Socket, transport=Transport}) ->
-    {_, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
+    {RawPath, Qs} = httpd_util:split_path(binary_to_list(AbsPath)),
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
     {ok, Peer} = Transport:peername(Socket),
     start_parse_request_header(State#state{http_req=#http_req{
@@ -198,35 +198,32 @@ parse_request({http_request, Method, {abs_path, AbsPath}, Version}, State = #sta
                                              uri = #http_uri{ path=RawPath, query_string = Qs} }});
 parse_request({http_request, Method, {absoluteURI, http, RawHost, RawPort, AbsPath}, Version},
               State=#state{transport=Transport}) ->
-    {_, RawPath, Qs} = agilitycache_dispatcher:split_path(AbsPath),
     ConnAtom = agilitycache_http_protocol_parser:version_to_connection(Version),
-    RawHost2 = cowboy_bstr:to_lower(RawHost),
     DefaultPort = agilitycache_http_protocol_parser:default_port(Transport:name()),
+
+    TmpPort = case RawPort of
+                  undefined ->
+                      DefaultPort;
+                  _ ->
+                      RawPort
+              end,
+    {ok,
+     {http, _UserInfo, THost, Port, TPath, TQuery}} = http_uri:parse("http://"
+                                                                  ++ binary_to_list(RawHost)
+                                                                  ++ ":" ++ integer_to_list(TmpPort)
+                                                                  ++ binary_to_list(AbsPath)),
+    Host = list_to_binary(THost),
+    Path = list_to_binary(TPath),
+    Query = list_to_binary(TQuery),
+
     HttpReq = #http_req{connection=ConnAtom, method=Method, version=Version,
-                        uri = Uri = #http_uri{ path=RawPath, query_string = Qs}},
-    State2 = case {RawPort, agilitycache_dispatcher:split_host_port(RawHost2)} of
-                 {DefaultPort, {Host, _}} ->
-                     State#state{http_req=HttpReq#http_req{
-                                            uri=Uri#http_uri{domain=Host, port=DefaultPort},
-                                            headers=[{'Host', Host}]}};
-                 {_, {Host, DefaultPort}} ->
-                     State#state{http_req=HttpReq#http_req{
-                                            uri=Uri#http_uri{domain=Host, port=DefaultPort},
-                                            headers=[{'Host', Host}]}};
-                 {undefined, {Host, undefined}} ->
-                     State#state{http_req=HttpReq#http_req{
-                                            uri=Uri#http_uri{domain=Host, port=DefaultPort},
-                                            headers=[{'Host', Host}]}};
-                 {undefined, {Host, Port}} ->
+                        uri = #http_uri{ domain=Host, port=Port, path=Path, query_string = Query}},
+    State2 = case Port of
+                 DefaultPort ->
+                     State#state{http_req=HttpReq#http_req{headers=[{'Host', Host}]}};
+                 _ ->
                      BinaryPort = list_to_binary(integer_to_list(Port)),
-                     State#state{http_req=HttpReq#http_req{
-                                            uri=Uri#http_uri{domain=Host, port=Port},
-                                            headers=[{'Host', << Host/binary, ":", BinaryPort/binary>>}]}};
-                 {Port, {Host, _}} ->
-                     BinaryPort = list_to_binary(integer_to_list(Port)),
-                     State#state{http_req=HttpReq#http_req{
-                                            uri=Uri#http_uri{domain=Host, port=Port},
-                                            headers=[{'Host', << Host/binary, ":", BinaryPort/binary>>}]}}
+                     State#state{http_req=HttpReq#http_req{headers=[{'Host', << Host/binary, ":", BinaryPort/binary>>}]}}
              end,
     start_parse_request_header(State2);
 
@@ -257,18 +254,18 @@ wait_request_header(State=#state{server_socket=Socket, transport=Transport, time
 
 parse_request_header({http_header, _I, 'Host', _R, RawHost}, State = #state{transport=Transport,
                                                                             http_req=Req=#http_req{uri=Uri=#http_uri{domain=undefined}}}) ->
-    RawHost2 = cowboy_bstr:to_lower(RawHost),
+    {ok,
+     {http, _UserInfo, THost, Port, _Path, _Query}} = http_uri:parse("http://" ++ binary_to_list(RawHost)),
+    Host = list_to_binary(THost),
     DefaultPort = agilitycache_http_protocol_parser:default_port(Transport:name()),
-    State2 = case agilitycache_dispatcher:split_host_port(RawHost2) of
-                 {Host, DefaultPort} ->
+
+
+    State2 = case Port of
+                 DefaultPort ->
                      State#state{http_req=Req#http_req{
                                             uri=Uri#http_uri{domain=Host, port=DefaultPort},
                                             headers=[{'Host', Host}|Req#http_req.headers]}};
-                 {Host, undefined} ->
-                     State#state{http_req=Req#http_req{
-                                            uri=Uri#http_uri{domain=Host, port=DefaultPort},
-                                            headers=[{'Host', Host}|Req#http_req.headers]}};
-                 {Host, Port}->
+                 _ ->
                      BinaryPort = list_to_binary(integer_to_list(Port)),
                      State#state{http_req=Req#http_req{
                                             uri=Uri#http_uri{domain=Host, port=Port},
