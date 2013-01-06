@@ -77,9 +77,9 @@ format_header(<<>>, _Any, Acc) ->
 format_header(<< $-, Rest/bits >>, Bool, Acc) ->
     format_header(Rest, not Bool, << Acc/binary, $- >>);
 format_header(<< C, Rest/bits >>, true, Acc) ->
-    format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_upper(C)) >>);
+    format_header(Rest, false, << Acc/binary, (agilitycache_bstr:char_to_upper(C)) >>);
 format_header(<< C, Rest/bits >>, false, Acc) ->
-    format_header(Rest, false, << Acc/binary, (cowboy_bstr:char_to_lower(C)) >>).
+    format_header(Rest, false, << Acc/binary, (agilitycache_bstr:char_to_lower(C)) >>).
 
 -spec status(http_status()) -> binary().
 
