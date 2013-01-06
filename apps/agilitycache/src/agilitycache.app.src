@@ -24,7 +24,8 @@
         kernel,
         stdlib,
         os_mon,
-        cowboy,
+        ranch,
+        folsom,
         lager
       ]},
     {mod, { agilitycache_app, []}},
