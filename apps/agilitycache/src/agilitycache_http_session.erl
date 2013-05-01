@@ -61,7 +61,7 @@ start_link(ListenerPid, Socket, Transport, Opts) ->
 sub_start(ListenerPid, Socket, Transport, Opts) ->
     {ok, SessionPid} = gen_fsm:start_link(?MODULE, {Socket, Transport, Opts}, []),
     Transport:controlling_process(Socket, SessionPid),
-    cowboy:accept_ack(ListenerPid),
+    ranch:accept_ack(ListenerPid),
     protocol_loop(SessionPid),
     ok.
 
