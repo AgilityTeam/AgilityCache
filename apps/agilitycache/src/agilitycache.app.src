@@ -25,6 +25,7 @@
         stdlib,
         os_mon,
         ranch,
+        qdate,
         folsom,
         lager
       ]},
