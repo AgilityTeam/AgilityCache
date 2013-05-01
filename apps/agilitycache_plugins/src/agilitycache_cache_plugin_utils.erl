@@ -65,10 +65,8 @@ parse_expires(HttpRep) ->
             lager:debug("Expires undefined"),
             calendar:universal_time();
         {Expires, _} ->
-            case agilitycache_date_time:convert_request_date(Expires) of
-                {ok, Date0} ->
-                    Date0;
-                {error, _} ->
+            try qdate:to_date(Expires)
+            catch throw:{ec_date,{bad_date, _}} ->
                     lager:debug("Expires invalid: ~p", [Expires]),
                     calendar:universal_time()
             end
@@ -81,10 +79,8 @@ parse_last_modified(HttpRep) ->
             lager:debug("Last-Modified undefined"),
             calendar:universal_time();
         {LastModified, _} ->
-            case agilitycache_date_time:convert_request_date(LastModified) of
-                {ok, Date0} ->
-                    Date0;
-                {error, _} ->
+            try qdate:to_date(LastModified)
+            catch trow:{ec_date,{bad_date, _}} ->
                     lager:debug("Last-Modified invalid: ~p", [LastModified]),
                     calendar:universal_time()
             end

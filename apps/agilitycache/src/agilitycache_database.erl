@@ -118,12 +118,11 @@ generate_data(<<"status_code">>, #cached_file_info { http_rep = #http_rep { stat
     Status;
 
 generate_data(<<"max_age">>, #cached_file_info { max_age = MaxAge } ) ->
-    {ok, MaxAge0} = agilitycache_date_time:generate_simple_string(MaxAge),
-    MaxAge0;
+    qdate:to_string(<<"Y-M-d h:m:s">>, MaxAge);
 
 generate_data(<<"age">>, #cached_file_info { age = Age } ) ->
-    {ok, Age0} = agilitycache_date_time:generate_simple_string(Age),
-    Age0.
+    qdate:to_string(<<"Y-M-d h:m:s">>, Age).
+
 
 -spec decode_headers(binary(),_) -> {'error',_} | {'ok',_}.
 decode_headers(Data, CachedFileInfo) ->
@@ -147,20 +146,12 @@ parse_data(<<"status_code">>, Data, CachedFileInfo = #cached_file_info { http_re
             {error, <<"algum erro">>}
     end;
 parse_data(<<"max_age">>, Data, CachedFileInfo) ->
-    case agilitycache_date_time:parse_simple_string(Data) of
-        {error, _} = Error ->
-            Error;
-        {ok, DateTime} ->
-            {ok, CachedFileInfo#cached_file_info{ max_age = DateTime }}
-    end;
+    DateTime = qdate:to_date(Data),
+    {ok, CachedFileInfo#cached_file_info{ max_age = DateTime }};
 
 parse_data(<<"age">>, Data, CachedFileInfo) ->
-    case agilitycache_date_time:parse_simple_string(Data) of
-        {error, _} = Error ->
-            Error;
-        {ok, DateTime} ->
-            {ok, CachedFileInfo#cached_file_info{ age = DateTime }}
-    end.
+    DateTime = qdate:to_date(Data),
+    {ok, CachedFileInfo#cached_file_info{ age = DateTime }}.
 
 %%-spec find_file(binary(), binary())
 %% FileId is a md5sum in binary format
