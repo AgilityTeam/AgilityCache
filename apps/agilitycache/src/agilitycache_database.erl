@@ -118,10 +118,10 @@ generate_data(<<"status_code">>, #cached_file_info { http_rep = #http_rep { stat
     Status;
 
 generate_data(<<"max_age">>, #cached_file_info { max_age = MaxAge } ) ->
-    qdate:to_string(<<"Y-M-d h:m:s">>, MaxAge);
+    qdate:to_string(<<"Y-M-d H:i:s">>, MaxAge);
 
 generate_data(<<"age">>, #cached_file_info { age = Age } ) ->
-    qdate:to_string(<<"Y-M-d h:m:s">>, Age).
+    qdate:to_string(<<"Y-M-d H:i:s">>, Age).
 
 
 -spec decode_headers(binary(),_) -> {'error',_} | {'ok',_}.
