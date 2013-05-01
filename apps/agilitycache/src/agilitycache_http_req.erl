@@ -170,7 +170,7 @@ reply(HttpServer, Code, Headers, Body, Req) ->
 start_reply(HttpServer, Code, Headers, Length, Req=#http_req{connection=Connection, version=Version}) ->
     MyHeaders0 = [
                   {<<"Connection">>, agilitycache_http_protocol_parser:atom_to_connection(Connection)},
-                  {<<"Date">>, agilitycache_clock:rfc1123()},
+                  {<<"Date">>, qdate:to_string(<<"D, d M Y H:i:s T">>)},
                   {<<"Server">>, <<"AgilityCache">>}
                  ],
     MyHeaders = case Length of
